@@ -1,0 +1,34 @@
+{
+  "call_type": "post_closing",
+  "description": "Call after a transaction closes — gratitude, referral ask, relationship maintenance",
+  "principles": {
+    "genuine_celebration": {
+      "description": "Agent opens with authentic congratulations and acknowledges the significance of the milestone for the client.",
+      "weight": 12
+    },
+    "transaction_recap": {
+      "description": "Agent briefly recaps the journey and highlights key wins — reinforces the value they delivered.",
+      "weight": 10
+    },
+    "checks_on_client": {
+      "description": "Agent asks how the client is settling in or feeling about the sale — shows care beyond the commission.",
+      "weight": 15
+    },
+    "handles_lingering_concerns": {
+      "description": "Agent addresses any outstanding questions, warranty items, or post-closing concerns promptly.",
+      "weight": 15
+    },
+    "referral_ask": {
+      "description": "Agent makes a natural, non-awkward referral ask — names a specific type of person they'd like to meet.",
+      "weight": 20
+    },
+    "future_relationship": {
+      "description": "Agent plants a seed for future business — mentions market updates, annual check-ins, or home value reviews.",
+      "weight": 15
+    },
+    "review_ask": {
+      "description": "Agent asks for a Google or Zillow review in a genuine, low-pressure way.",
+      "weight": 13
+    }
+  }
+}

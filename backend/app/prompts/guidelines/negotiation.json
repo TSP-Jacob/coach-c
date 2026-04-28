@@ -1,0 +1,34 @@
+{
+  "call_type": "negotiation",
+  "description": "Call involving offer negotiation between realtor and client or other party",
+  "principles": {
+    "client_interests_clear": {
+      "description": "Agent demonstrates a clear understanding of the client's priorities beyond price — conditions, timeline, certainty.",
+      "weight": 15
+    },
+    "strategic_framing": {
+      "description": "Agent frames the negotiation from a position of strength, not desperation.",
+      "weight": 15
+    },
+    "manages_client_emotions": {
+      "description": "Agent keeps the client calm and focused on the goal, not reactive to the other party.",
+      "weight": 15
+    },
+    "counter_strategy_explained": {
+      "description": "Agent explains the reasoning behind any counter-offer strategy clearly.",
+      "weight": 15
+    },
+    "alternatives_presented": {
+      "description": "Agent presents at least one alternative scenario if the primary offer fails.",
+      "weight": 10
+    },
+    "decision_ownership": {
+      "description": "Agent empowers the client to make the decision while providing a clear recommendation.",
+      "weight": 20
+    },
+    "next_steps_confirmed": {
+      "description": "Agent confirms what happens next and by when.",
+      "weight": 10
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "call_type": "prospecting",
+  "description": "Cold or warm outreach to generate new leads",
+  "principles": {
+    "strong_opening": {
+      "description": "Agent opens with energy, states their name and company clearly, and gives a compelling reason for the call within the first 15 seconds.",
+      "weight": 10
+    },
+    "permission_to_continue": {
+      "description": "Agent asks if it's a good time before launching into the pitch.",
+      "weight": 8
+    },
+    "value_proposition": {
+      "description": "Agent communicates a clear, specific benefit for the prospect — not generic claims.",
+      "weight": 12
+    },
+    "qualification_questions": {
+      "description": "Agent asks at least 2 qualifying questions (timeline, motivation, current situation) before pitching.",
+      "weight": 15
+    },
+    "handles_objections": {
+      "description": "Agent responds to objections with empathy first, then logic. Does not argue or capitulate immediately.",
+      "weight": 15
+    },
+    "appointment_ask": {
+      "description": "Agent makes a clear, direct ask for the appointment — not a vague 'would you be interested?'",
+      "weight": 20
+    },
+    "two_option_close": {
+      "description": "Agent offers two specific time options rather than an open-ended 'when are you free?'",
+      "weight": 10
+    },
+    "next_steps_confirmed": {
+      "description": "Call ends with a confirmed next step — date, time, and follow-up method agreed upon.",
+      "weight": 10
+    }
+  }
+}

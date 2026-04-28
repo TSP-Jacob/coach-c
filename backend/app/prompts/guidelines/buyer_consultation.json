@@ -1,0 +1,38 @@
+{
+  "call_type": "buyer_consultation",
+  "description": "Initial or follow-up call with a buyer prospect",
+  "principles": {
+    "motivation_uncovered": {
+      "description": "Agent asks WHY the buyer wants to move — not just what they want. Understands the emotional driver.",
+      "weight": 15
+    },
+    "timeline_established": {
+      "description": "Agent establishes a clear timeline and assesses urgency.",
+      "weight": 10
+    },
+    "financial_qualification": {
+      "description": "Agent tactfully addresses pre-approval status and budget without making the client feel interrogated.",
+      "weight": 12
+    },
+    "needs_vs_wants": {
+      "description": "Agent distinguishes between must-haves and nice-to-haves to set realistic expectations.",
+      "weight": 10
+    },
+    "agent_value_explained": {
+      "description": "Agent explains what they do differently and why working exclusively with them benefits the buyer.",
+      "weight": 12
+    },
+    "commitment_asked": {
+      "description": "Agent asks the buyer to commit to working exclusively or at minimum schedules a formal buyer consultation meeting.",
+      "weight": 15
+    },
+    "active_listening": {
+      "description": "Agent reflects back what the buyer says, validates concerns, and does not dominate the conversation.",
+      "weight": 16
+    },
+    "next_steps_confirmed": {
+      "description": "Clear next step confirmed — showing scheduled, listing sent, or follow-up call booked.",
+      "weight": 10
+    }
+  }
+}

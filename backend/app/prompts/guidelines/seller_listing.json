@@ -1,0 +1,38 @@
+{
+  "call_type": "seller_listing",
+  "description": "Call with a homeowner considering listing their property",
+  "principles": {
+    "rapport_building": {
+      "description": "Agent builds genuine rapport before discussing business. References something personal or local.",
+      "weight": 8
+    },
+    "seller_motivation": {
+      "description": "Agent uncovers the seller's true motivation for selling — not just 'what's your timeline?'",
+      "weight": 15
+    },
+    "pricing_conversation": {
+      "description": "Agent handles pricing expectations diplomatically — neither overprices to win the listing nor underprices without explanation.",
+      "weight": 15
+    },
+    "marketing_plan_presented": {
+      "description": "Agent explains their specific marketing plan with concrete tactics, not generic promises.",
+      "weight": 12
+    },
+    "competition_awareness": {
+      "description": "Agent references current market conditions and comparable properties to set expectations.",
+      "weight": 10
+    },
+    "objection_handling": {
+      "description": "Agent responds to commission or timing objections with confidence and a clear value argument.",
+      "weight": 15
+    },
+    "listing_appointment_ask": {
+      "description": "Agent asks directly for the listing appointment or for a decision by a specific date.",
+      "weight": 15
+    },
+    "follow_up_plan": {
+      "description": "Agent establishes a clear follow-up plan if the seller is not ready to decide.",
+      "weight": 10
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "call_type": "followup",
+  "description": "Follow-up call with an existing lead or past client",
+  "principles": {
+    "personalized_opener": {
+      "description": "Agent opens with a specific reference to the last conversation — not a generic 'just checking in'.",
+      "weight": 15
+    },
+    "status_update_sought": {
+      "description": "Agent asks an open-ended question to understand where the prospect is in their journey.",
+      "weight": 15
+    },
+    "value_added": {
+      "description": "Agent brings something new — a relevant listing, market update, or useful insight — not just a check-in.",
+      "weight": 15
+    },
+    "urgency_created": {
+      "description": "Agent highlights a relevant market condition or opportunity to create appropriate urgency.",
+      "weight": 10
+    },
+    "objection_revisited": {
+      "description": "Agent addresses any objection from the last call with new information or a different angle.",
+      "weight": 15
+    },
+    "commitment_advanced": {
+      "description": "Agent moves the conversation forward — gets a new commitment, not just a 'stay in touch'.",
+      "weight": 20
+    },
+    "next_step_confirmed": {
+      "description": "Call ends with a specific next action and timeline agreed upon by both parties.",
+      "weight": 10
+    }
+  }
+}
