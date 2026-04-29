@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, agentId, loading,
-      signOut: () => supabase.auth.signOut(),
+      signOut: async () => { await supabase.auth.signOut(); },
     }}>
       {children}
     </AuthContext.Provider>
