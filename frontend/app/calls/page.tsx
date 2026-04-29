@@ -113,7 +113,7 @@ export default function CallsPage() {
       </div>
 
       {showUpload && (
-        <CallUpload agentId={AGENT_ID} onSuccess={() => {
+        <CallUpload agentId={AGENT_ID ?? ""} onSuccess={() => {
           setShowUpload(false);
           load();
           toast("Call uploaded — analysis started");

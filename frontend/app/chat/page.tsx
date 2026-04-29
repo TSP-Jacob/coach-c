@@ -18,7 +18,7 @@ export default function ChatPage() {
     setMessages((m) => [...m, userMsg]);
     setLoading(true);
     try {
-      const { reply } = await api.chat.send(AGENT_ID, text, undefined, Intl.DateTimeFormat().resolvedOptions().timeZone);
+      const { reply } = await api.chat.send(AGENT_ID ?? "", text, undefined, Intl.DateTimeFormat().resolvedOptions().timeZone);
       setMessages((m) => [...m, { role: "assistant", content: reply, created_at: new Date().toISOString() }]);
     } finally {
       setLoading(false);
@@ -26,7 +26,7 @@ export default function ChatPage() {
   };
 
   const clear = async () => {
-    await api.chat.clear(AGENT_ID);
+    await api.chat.clear(AGENT_ID ?? "");
     setMessages([]);
   };
 
