@@ -1,19 +1,20 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth";
+import { useAuth, getExtToken } from "@/lib/auth";
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   const router = useRouter();
+  const extToken = getExtToken();
 
   useEffect(() => {
-    if (!loading && !SKIP_AUTH && !session) {
+    if (!loading && !SKIP_AUTH && !session && !extToken) {
       router.replace("/login");
     }
-  }, [session, loading, router]);
+  }, [session, loading, router, extToken]);
 
   if (loading) {
     return (
@@ -23,7 +24,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!SKIP_AUTH && !session) return null;
+  if (!SKIP_AUTH && !session && !extToken) return null;
 
   return <>{children}</>;
 }

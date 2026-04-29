@@ -1,10 +1,13 @@
 import { supabase } from "./supabase";
+import { getExtToken } from "./auth";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
 async function authHeaders(): Promise<Record<string, string>> {
   if (SKIP_AUTH) return {};
+  const extToken = getExtToken();
+  if (extToken) return { Authorization: `Bearer ${extToken}` };
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token
     ? { Authorization: `Bearer ${session.access_token}` }
