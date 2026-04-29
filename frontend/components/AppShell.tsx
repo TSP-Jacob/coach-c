@@ -6,8 +6,8 @@ import AuthGuard from "./AuthGuard";
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  // Login page: bare full-screen — no sidebar, no auth guard
-  if (pathname === "/login") {
+  // Login / auth pages: bare full-screen — no sidebar, no auth guard
+  if (pathname === "/login" || pathname === "/auth") {
     return <>{children}</>;
   }
 
