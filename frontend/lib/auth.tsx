@@ -7,13 +7,6 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 const DEMO_AGENT_ID = process.env.NEXT_PUBLIC_DEMO_AGENT_ID || "";
 
-// Persist token passed via URL (?token=...) into sessionStorage so it
-// survives client-side navigations within Coach-C.
-if (typeof window !== "undefined") {
-  const t = new URLSearchParams(window.location.search).get("token");
-  if (t) sessionStorage.setItem("ext_token", t);
-}
-
 export function getExtToken(): string | null {
   if (typeof window === "undefined") return null;
   return sessionStorage.getItem("ext_token");
@@ -52,8 +45,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (SKIP_AUTH) return;
 
-    // If a token was passed from the main website, use it directly.
-    const extToken = getExtToken();
+    // Read token from URL params and persist it, then use it directly.
+    const urlToken = new URLSearchParams(window.location.search).get("token");
+    if (urlToken) sessionStorage.setItem("ext_token", urlToken);
+
+    const extToken = urlToken || getExtToken();
     if (extToken) {
       fetchAgentId(extToken).then(id => {
         setAgentId(id);
