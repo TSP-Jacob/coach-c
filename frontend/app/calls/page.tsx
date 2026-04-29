@@ -62,7 +62,7 @@ export default function CallsPage() {
   const [scoreFilter, setScoreFilter] = useState("all");
   const { toast } = useToast();
 
-  const load = () => api.calls.list(AGENT_ID).then(setCalls);
+  const load = () => api.calls.list(AGENT_ID ?? undefined).then(setCalls);
   useEffect(() => { load(); }, []);
 
   const remove = async (id: string, e: React.MouseEvent) => {
