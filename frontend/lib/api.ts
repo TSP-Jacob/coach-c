@@ -67,6 +67,7 @@ export interface Call {
   status: string; overall_score?: number;
   transcript?: { utterances: Utterance[]; full_text: string };
   coaching_report?: CoachingReport;
+  audio_url?: string;
   realtor_speaker?: string;
   clients?: { name: string };
   created_at: string; updated_at?: string;
