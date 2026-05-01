@@ -11,6 +11,20 @@ router = APIRouter()
 
 _PHONE_RE = re.compile(r"\+?1?\s*[\-.]?\s*\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4}")
 
+# Signed URLs expire after 1 hour. Extract the storage path so we can re-sign on every request.
+_STORAGE_PATH_RE = re.compile(r"/object/sign/call-recordings/(.+?)(?:\?|$)")
+
+def _refresh_audio_url(db, stored_url: str) -> str:
+    """Return a fresh 1-hour signed URL, falling back to the stored one on any error."""
+    match = _STORAGE_PATH_RE.search(stored_url)
+    if not match:
+        return stored_url
+    try:
+        result = db.storage.from_("call-recordings").create_signed_url(match.group(1), 3600)
+        return result.get("signedURL") or stored_url
+    except Exception:
+        return stored_url
+
 
 def _normalize_phone(raw: str) -> str:
     return re.sub(r"\D", "", raw).lstrip("1") if raw else ""
@@ -190,7 +204,10 @@ def get_call(call_id: str):
     result = db.table("calls").select("*, agents(name), clients(name)").eq("id", call_id).single().execute()
     if not result.data:
         raise HTTPException(404, "Call not found")
-    return result.data
+    call = result.data
+    if call.get("audio_url"):
+        call["audio_url"] = _refresh_audio_url(db, call["audio_url"])
+    return call
 
 
 @router.delete("/{call_id}")
