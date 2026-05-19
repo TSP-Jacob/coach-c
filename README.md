@@ -1,6 +1,8 @@
 # Coach-C — AI Sales Coach for Real Estate
 
-Built by Propria Systems.
+An AI-powered call coaching platform for real estate agents. Agents upload call recordings; AssemblyAI transcribes and diarizes the conversation, Claude classifies the call type and scores it against a set of coaching guidelines, and a structured coaching report is generated with scores, strengths, and improvements. Agents can also chat directly with Coach-C, which uses RAG (pgvector + OpenAI embeddings) to draw on client file notes for personalized guidance.
+
+Built by [Chardin Systems](https://chardinsystems.com).
 
 ## Setup (5 steps)
 

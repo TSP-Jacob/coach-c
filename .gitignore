@@ -20,6 +20,11 @@ node_modules/
 out/
 npm-debug.log*
 
+# Data files (may contain real agent/contact data)
+*.xlsx
+*.csv
+*.db
+
 # OS
 .DS_Store
 Thumbs.db
