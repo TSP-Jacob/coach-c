@@ -39,7 +39,7 @@ export const api = {
       if (status)  p.set("status", status);
       return req<Lead[]>(`/api/leads/?${p}`);
     },
-    update: (id: string, body: { status?: string; agent_id?: string }) =>
+    update: (id: string, body: { status?: string; agent_id?: string; contact_method?: string }) =>
       req<Lead>(`/api/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
   calls: {
@@ -58,6 +58,7 @@ export const api = {
     },
   },
   agents: {
+    list: () => req<Agent[]>(`/api/agents/`),
     get: (id: string) => req<Agent>(`/api/agents/${id}`),
     stats: (id: string) => req<AgentStats>(`/api/agents/${id}/stats`),
     listClients: (agentId: string) => req<Client[]>(`/api/agents/${agentId}/clients`),
@@ -127,6 +128,8 @@ export interface Lead {
   email?: string;
   source: "call" | "home_value";
   status: "new" | "contacted" | "converted" | "lost";
+  contact_method?: "call" | "text" | "email" | "in_person";
+  contacted_at?: string;
   address?: string;
   city?: string;
   province?: string;

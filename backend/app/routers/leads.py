@@ -12,6 +12,7 @@ router = APIRouter()
 class LeadUpdate(BaseModel):
     status: str | None = None
     agent_id: str | None = None
+    contact_method: str | None = None
 
 
 class HomeValuePayload(BaseModel):
@@ -60,6 +61,11 @@ def update_lead(
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+    # When logging a contact method, also stamp the time and advance status
+    if updates.get("contact_method"):
+        from datetime import datetime, timezone
+        updates.setdefault("status", "contacted")
+        updates["contacted_at"] = datetime.now(timezone.utc).isoformat()
     result = db.table("leads").update(updates).eq("id", lead_id).execute()
     if not result.data:
         raise HTTPException(status_code=404, detail="Lead not found")

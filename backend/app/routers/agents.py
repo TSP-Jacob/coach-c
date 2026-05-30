@@ -87,6 +87,15 @@ def register_agent(
     return result.data[0]
 
 
+@router.get("/")
+def list_agents(brokerage_id: str | None = None):
+    db = get_supabase()
+    q = db.table("agents").select("id, name, email")
+    if brokerage_id:
+        q = q.eq("brokerage_id", brokerage_id)
+    return q.order("name").execute().data
+
+
 @router.get("/me")
 def get_my_agent(jwt_agent_id: str = Depends(get_jwt_agent_id)):
     """Returns the agent profile for the authenticated user."""
