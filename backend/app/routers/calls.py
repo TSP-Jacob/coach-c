@@ -1,6 +1,9 @@
+import os
 import re
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Query
+from datetime import datetime
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Query, Request
+import httpx
 from app.database import get_supabase
 from app.services.transcription import TranscriptionService
 from app.services.coaching import CoachingService
@@ -139,6 +142,112 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
     except Exception as e:
         db.table("calls").update({"status": "error", "error_message": str(e)}).eq("id", call_id).execute()
         raise
+
+
+@router.post("/webhook/bland")
+async def bland_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Receives Bland.ai call_ended webhooks.
+    Matches the call to a Coach-C agent by their bland_phone_number,
+    downloads the recording, uploads it to storage, inserts a call record,
+    and kicks off the full coaching-analysis pipeline.
+    """
+    # Respond immediately so Bland doesn't time out
+    body = await request.json()
+
+    # Optional signature check
+    bland_secret = os.getenv("BLAND_WEBHOOK_SECRET")
+    if bland_secret:
+        sig = (request.headers.get("x-bland-signature")
+               or request.headers.get("bland-signature", ""))
+        if sig != bland_secret:
+            return {"error": "invalid signature"}
+
+    call_id      = body.get("call_id")
+    recording_url = body.get("recording_url")
+    if not call_id or not recording_url:
+        return {"received": True, "ignored": "missing call_id or recording_url"}
+
+    to_number   = body.get("to") or ""
+    from_number = body.get("from") or ""
+    direction   = (body.get("direction") or "inbound").lower()
+    call_length = body.get("call_length")          # Bland reports minutes
+    duration_sec = int(float(call_length) * 60) if call_length else None
+    created_at   = body.get("created_at") or datetime.utcnow().isoformat()
+
+    db = get_supabase()
+
+    # ── Match agent by bland_phone_number ─────────────────────────
+    to_digits = re.sub(r"\D", "", to_number)[-10:] if to_number else ""
+    agent = None
+
+    if to_digits:
+        rows = db.table("agents").select("id, bland_phone_number").execute().data or []
+        for row in rows:
+            stored = re.sub(r"\D", "", row.get("bland_phone_number") or "")[-10:]
+            if stored and stored == to_digits:
+                agent = row
+                break
+
+    # Fallback: match by agent_email in Bland metadata
+    if not agent:
+        agent_email = (body.get("metadata") or {}).get("agent_email", "")
+        if agent_email:
+            result = (db.table("agents").select("id")
+                      .eq("email", agent_email.lower())
+                      .maybe_single().execute())
+            if result and result.data:
+                agent = result.data
+
+    if not agent:
+        print(f"[bland_webhook] No agent matched — to={to_number}")
+        return {"received": True, "ignored": f"no agent matched for to={to_number}"}
+
+    # ── Download recording ────────────────────────────────────────
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60) as client:
+            resp = await client.get(recording_url)
+            resp.raise_for_status()
+            audio_bytes = resp.content
+    except Exception as exc:
+        print(f"[bland_webhook] Recording download failed: {exc}")
+        return {"received": True, "error": "recording download failed"}
+
+    # ── Upload to Supabase Storage ────────────────────────────────
+    storage_path = f"{agent['id']}/{call_id}.mp3"
+    try:
+        db.storage.from_("call-recordings").upload(
+            storage_path, audio_bytes, {"content-type": "audio/mpeg"}
+        )
+        signed = db.storage.from_("call-recordings").create_signed_url(storage_path, 3600)
+        audio_url = signed.get("signedURL") or storage_path
+    except Exception as exc:
+        print(f"[bland_webhook] Storage upload failed: {exc}")
+        return {"received": True, "error": "storage upload failed"}
+
+    # ── Insert call record ────────────────────────────────────────
+    phone_hint = re.sub(r"\D", "", from_number)[-10:] if from_number else None
+
+    call = db.table("calls").insert({
+        "agent_id":         agent["id"],
+        "audio_url":        audio_url,
+        "call_date":        created_at,
+        "status":           "uploaded",
+        "call_type":        direction,
+        "duration_seconds": duration_sec,
+    }).execute().data[0]
+
+    # ── Trigger coaching pipeline in background ───────────────────
+    background_tasks.add_task(
+        _process_call,
+        call["id"], agent["id"], audio_url,
+        None,           # client_id — resolved inside _process_call
+        phone_hint,
+        created_at,
+    )
+
+    print(f"[bland_webhook] Ingested call {call_id} → Coach-C call {call['id']} for agent {agent['id']}")
+    return {"received": True, "call_id": call["id"]}
 
 
 @router.post("/upload")
