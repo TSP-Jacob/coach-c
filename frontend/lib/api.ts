@@ -114,6 +114,7 @@ export interface AgentStats {
 export interface Client {
   id: string; agent_id: string; name: string;
   phone?: string; email?: string; type: string; notes?: string;
+  client_status?: string; location?: string;
 }
 
 export interface ChatMessage {

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Call, Client, Agent } from "@/lib/api";
 import Link from "next/link";
-import { Phone, Mail, Search } from "lucide-react";
+import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -11,39 +11,64 @@ const TYPE_LABEL: Record<string, string> = {
   both:   "Buyer & Seller",
 };
 
-const STATUS_ORDER = ["error", "complete", "analyzing", "transcribing", "uploaded"];
+const CLIENT_STATUSES = [
+  "Lead",
+  "Engaged",
+  "Follow-Up Needed",
+  "Negotiating",
+  "Converted",
+];
 
-function statusLabel(status: string) {
-  if (status === "complete")    return { label: "Complete",     cls: "text-green-700 bg-green-50 border-green-200" };
-  if (status === "analyzing")   return { label: "Analyzing…",   cls: "text-amber-700 bg-amber-50 border-amber-200" };
-  if (status === "transcribing")return { label: "Transcribing…",cls: "text-amber-700 bg-amber-50 border-amber-200" };
-  if (status === "uploaded")    return { label: "Processing…",  cls: "text-amber-700 bg-amber-50 border-amber-200" };
-  if (status === "error")       return { label: "Error",        cls: "text-brand bg-brand-light border-brand/20" };
-  return { label: status, cls: "text-muted bg-white border-warm-border" };
+const CLIENT_STATUS_STYLE: Record<string, string> = {
+  "Lead":             "text-blue-700 bg-blue-50 border-blue-200",
+  "Engaged":          "text-green-700 bg-green-50 border-green-200",
+  "Follow-Up Needed": "text-amber-700 bg-amber-50 border-amber-200",
+  "Negotiating":      "text-purple-700 bg-purple-50 border-purple-200",
+  "Converted":        "text-charcoal bg-cream border-warm-border",
+};
+
+const CALL_TYPE_LABEL: Record<string, string> = {
+  prospecting:          "Prospecting",
+  buyer_consultation:   "Buyer Consult",
+  seller_listing:       "Seller Listing",
+  followup:             "Follow-Up",
+  negotiation:          "Negotiation",
+  post_closing:         "Post-Closing",
+  unknown:              "Call",
+};
+
+function scoreStyle(score: number) {
+  if (score >= 80) return "text-green-700 border-green-200 bg-green-50";
+  if (score >= 60) return "text-amber-600 border-amber-200 bg-amber-50";
+  if (score >= 40) return "text-orange-600 border-orange-200 bg-orange-50";
+  return "text-brand border-brand/20 bg-brand-light";
+}
+
+function formatDuration(secs?: number) {
+  if (!secs) return null;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m > 0 ? `${m}m${s > 0 ? ` ${s}s` : ""}` : `${s}s`;
 }
 
 interface ClientRow extends Client {
-  callCount:    number;
-  avgScore:     number | null;
-  lastCallDate: string | null;
-  lastCallType: string | null;
-  lastStatus:   string | null;
-  lastSummary:  string | null;
-  agentName:    string;
+  clientCalls: Call[];
+  avgScore:    number | null;
 }
 
 export default function ClientsPage() {
   const { agentId: AGENT_ID } = useAuth();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [calls,   setCalls]   = useState<Call[]>([]);
-  const [agent,   setAgent]   = useState<Agent | null>(null);
-  const [search,  setSearch]  = useState("");
+  const [clients,    setClients]    = useState<Client[]>([]);
+  const [calls,      setCalls]      = useState<Call[]>([]);
+  const [agents,     setAgents]     = useState<Agent[]>([]);
+  const [search,     setSearch]     = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!AGENT_ID) return;
     api.agents.listClients(AGENT_ID).then(setClients);
     api.calls.list(AGENT_ID).then(setCalls);
-    api.agents.get(AGENT_ID).then(setAgent);
+    api.agents.list().then(setAgents);
   }, [AGENT_ID]);
 
   const rows: ClientRow[] = useMemo(() => {
@@ -51,26 +76,13 @@ export default function ClientsPage() {
       const clientCalls = calls
         .filter(c => c.client_id === client.id)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
       const completedCalls = clientCalls.filter(c => c.status === "complete" && c.overall_score != null);
       const avgScore = completedCalls.length
         ? Math.round(completedCalls.reduce((s, c) => s + c.overall_score!, 0) / completedCalls.length)
         : null;
-
-      const latest = clientCalls[0] ?? null;
-
-      return {
-        ...client,
-        callCount:    clientCalls.length,
-        avgScore,
-        lastCallDate: latest?.created_at ?? null,
-        lastCallType: latest?.call_type ?? null,
-        lastStatus:   latest?.status ?? null,
-        lastSummary:  latest?.coaching_report?.summary ?? null,
-        agentName:    agent?.name ?? "—",
-      };
+      return { ...client, clientCalls, avgScore };
     });
-  }, [clients, calls, agent]);
+  }, [clients, calls]);
 
   const filtered = useMemo(() =>
     rows.filter(r =>
@@ -80,16 +92,24 @@ export default function ClientsPage() {
       (r.email ?? "").toLowerCase().includes(search.toLowerCase())
     ), [rows, search]);
 
+  async function handleStatusChange(clientId: string, newStatus: string) {
+    setClients(prev => prev.map(c => c.id === clientId ? { ...c, client_status: newStatus } : c));
+    await api.agents.updateClient(clientId, { client_status: newStatus });
+  }
+
+  async function handleLocationSave(clientId: string, location: string) {
+    setClients(prev => prev.map(c => c.id === clientId ? { ...c, location } : c));
+    await api.agents.updateClient(clientId, { location });
+  }
+
   return (
     <div className="max-w-5xl space-y-6">
       {/* Header */}
-      <div className="border-b border-warm-border pb-5 flex items-end justify-between">
-        <div>
-          <h1 className="text-4xl font-serif font-bold text-charcoal">Clients</h1>
-          <p className="text-xs text-muted mt-1 tracking-widest uppercase">
-            {clients.length} profile{clients.length !== 1 ? "s" : ""}
-          </p>
-        </div>
+      <div className="border-b border-warm-border pb-5">
+        <h1 className="text-4xl font-serif font-bold text-charcoal">Clients</h1>
+        <p className="text-xs text-muted mt-1 tracking-widest uppercase">
+          {clients.length} profile{clients.length !== 1 ? "s" : ""}
+        </p>
       </div>
 
       {/* Search */}
@@ -102,108 +122,254 @@ export default function ClientsPage() {
         />
       </div>
 
-      {/* Table header */}
+      {/* Table */}
       <div className="bg-white border border-warm-border">
-        <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-6 py-3 border-b border-warm-border">
-          {["Client", "Type · Agent", "Contact", "Calls · Score", "Last Activity"].map(h => (
-            <p key={h} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
+        <div className="grid grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-4 px-6 py-3 border-b border-warm-border">
+          {["Client", "Status", "Contact", "Calls · Score", ""].map((h, i) => (
+            <p key={i} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
           ))}
         </div>
 
         <div className="divide-y divide-warm-border">
           {filtered.length === 0 && (
             <p className="text-muted text-sm px-6 py-8 italic font-serif">
-              {clients.length === 0 ? "No clients yet. Clients are created automatically when calls are analyzed." : "No clients match your search."}
+              {clients.length === 0
+                ? "No clients yet. Clients are created automatically when calls are analyzed."
+                : "No clients match your search."}
             </p>
           )}
 
           {filtered.map(row => {
-            const st = row.lastStatus ? statusLabel(row.lastStatus) : null;
+            const isOpen = expandedId === row.id;
+            const latestCall = row.clientCalls[0] ?? null;
+            const latestSummary = latestCall?.coaching_report?.summary ?? null;
+            const assignedAgent = agents.find(a => a.id === row.agent_id);
+            const statusLabel = row.client_status || "Lead";
+            const statusStyle = CLIENT_STATUS_STYLE[statusLabel] ?? "text-muted border-warm-border bg-white";
+
             return (
-              <div key={row.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 px-6 py-5 hover:bg-cream transition-colors items-start">
+              <div key={row.id}>
+                {/* Summary row — click to expand */}
+                <div
+                  onClick={() => setExpandedId(isOpen ? null : row.id)}
+                  className="grid grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-4 px-6 py-5 hover:bg-cream transition-colors items-center cursor-pointer select-none"
+                >
+                  {/* Name */}
+                  <div>
+                    <p className="text-sm font-medium text-charcoal">{row.name}</p>
+                    {latestSummary && !isOpen && (
+                      <p className="text-xs text-muted mt-1 leading-relaxed line-clamp-1">{latestSummary}</p>
+                    )}
+                    {!latestSummary && row.clientCalls.length === 0 && (
+                      <p className="text-xs text-muted mt-1 italic">No calls yet</p>
+                    )}
+                  </div>
 
-                {/* Name + last summary */}
-                <div>
-                  <p className="text-sm font-medium text-charcoal">{row.name}</p>
-                  {row.lastSummary && (
-                    <p className="text-xs text-muted mt-1 leading-relaxed line-clamp-2">
-                      {row.lastSummary}
-                    </p>
-                  )}
-                  {!row.lastSummary && row.callCount === 0 && (
-                    <p className="text-xs text-muted mt-1 italic">No calls yet</p>
-                  )}
-                </div>
-
-                {/* Type + agent */}
-                <div>
-                  <span className="text-xs border border-warm-border px-2 py-0.5 text-muted">
-                    {TYPE_LABEL[row.type] ?? row.type}
-                  </span>
-                  <p className="text-xs text-muted mt-2">{row.agentName}</p>
-                </div>
-
-                {/* Contact */}
-                <div className="space-y-1.5">
-                  {row.phone && (
-                    <p className="text-xs text-muted flex items-center gap-1.5">
-                      <Phone size={11} /> {row.phone}
-                    </p>
-                  )}
-                  {row.email && (
-                    <p className="text-xs text-muted flex items-center gap-1.5">
-                      <Mail size={11} /> {row.email}
-                    </p>
-                  )}
-                  {!row.phone && !row.email && (
-                    <p className="text-xs text-muted italic">—</p>
-                  )}
-                </div>
-
-                {/* Call count + score */}
-                <div>
-                  <p className="text-sm font-serif font-bold text-charcoal">
-                    {row.callCount}
-                    <span className="text-xs font-sans font-normal text-muted ml-1">call{row.callCount !== 1 ? "s" : ""}</span>
-                  </p>
-                  {row.avgScore != null && (
-                    <p className="text-xs text-muted mt-1">avg score <span className="font-mono text-charcoal">{row.avgScore}</span></p>
-                  )}
-                  {st && (
-                    <span className={`inline-block mt-1.5 text-[10px] border px-2 py-0.5 ${st.cls}`}>
-                      {st.label}
+                  {/* Client status badge */}
+                  <div>
+                    <span className={`text-xs px-2 py-0.5 border whitespace-nowrap ${statusStyle}`}>
+                      {statusLabel}
                     </span>
-                  )}
+                    <p className="text-xs text-muted mt-1.5">{TYPE_LABEL[row.type] ?? row.type}</p>
+                  </div>
+
+                  {/* Contact */}
+                  <div className="space-y-1">
+                    {row.phone && (
+                      <p className="text-xs text-muted flex items-center gap-1.5">
+                        <Phone size={11} /> {row.phone}
+                      </p>
+                    )}
+                    {row.email && (
+                      <p className="text-xs text-muted flex items-center gap-1.5 truncate">
+                        <Mail size={11} /> {row.email}
+                      </p>
+                    )}
+                    {!row.phone && !row.email && <p className="text-xs text-muted italic">—</p>}
+                  </div>
+
+                  {/* Calls + score */}
+                  <div>
+                    <p className="text-sm font-serif font-bold text-charcoal">
+                      {row.clientCalls.length}
+                      <span className="text-xs font-sans font-normal text-muted ml-1">
+                        call{row.clientCalls.length !== 1 ? "s" : ""}
+                      </span>
+                    </p>
+                    {row.avgScore != null && (
+                      <p className="text-xs text-muted mt-0.5">
+                        avg <span className="font-mono text-charcoal">{row.avgScore}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Expand chevron */}
+                  <div className="flex justify-end">
+                    {isOpen
+                      ? <ChevronUp size={15} className="text-muted" />
+                      : <ChevronDown size={15} className="text-muted" />
+                    }
+                  </div>
                 </div>
 
-                {/* Last activity */}
-                <div>
-                  {row.lastCallDate && (
-                    <>
-                      <p className="text-xs text-charcoal">
-                        {new Date(row.lastCallDate).toLocaleDateString()}
-                      </p>
-                      {row.lastCallType && (
-                        <p className="text-xs text-muted mt-0.5 capitalize">
-                          {row.lastCallType.replace(/_/g, " ")}
-                        </p>
+                {/* Expanded client file */}
+                {isOpen && (
+                  <div className="border-t border-warm-border bg-cream px-6 py-6 space-y-6">
+
+                    {/* Top row: Agent + Status + Contact */}
+                    <div className="grid grid-cols-3 gap-6">
+
+                      {/* Agent + client status */}
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Assigned Agent</p>
+                          {assignedAgent ? (
+                            <Link
+                              href={`/agents/${assignedAgent.id}`}
+                              className="text-sm font-medium text-brand hover:opacity-75 transition-opacity"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {assignedAgent.name} →
+                            </Link>
+                          ) : (
+                            <p className="text-sm text-muted italic">Unassigned</p>
+                          )}
+                        </div>
+                        <div onClick={e => e.stopPropagation()}>
+                          <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Client Status</p>
+                          <select
+                            value={row.client_status || "Lead"}
+                            onChange={e => handleStatusChange(row.id, e.target.value)}
+                            className="text-sm border border-warm-border bg-white px-2 py-1.5 focus:outline-none focus:border-brand transition-colors w-full"
+                          >
+                            {CLIENT_STATUSES.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Contact info */}
+                      <div className="space-y-3">
+                        <p className="text-[10px] tracking-widest uppercase text-muted">Contact Info</p>
+                        {row.phone && (
+                          <p className="text-sm text-charcoal flex items-center gap-2">
+                            <Phone size={13} className="text-muted shrink-0" /> {row.phone}
+                          </p>
+                        )}
+                        {row.email && (
+                          <p className="text-sm text-charcoal flex items-center gap-2">
+                            <Mail size={13} className="text-muted shrink-0" /> {row.email}
+                          </p>
+                        )}
+                        <LocationField
+                          value={row.location ?? ""}
+                          onSave={loc => handleLocationSave(row.id, loc)}
+                        />
+                      </div>
+
+                      {/* Latest summary */}
+                      <div>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Latest Summary</p>
+                        {latestSummary ? (
+                          <p className="text-sm text-charcoal leading-relaxed">{latestSummary}</p>
+                        ) : (
+                          <p className="text-sm text-muted italic">No call analysis yet.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Communications list */}
+                    <div>
+                      <p className="text-[10px] tracking-widest uppercase text-muted mb-3">Communications</p>
+                      {row.clientCalls.length === 0 ? (
+                        <p className="text-sm text-muted italic">No recorded calls yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {row.clientCalls.map(call => (
+                            <Link
+                              key={call.id}
+                              href={`/calls/${call.id}`}
+                              onClick={e => e.stopPropagation()}
+                              className="flex items-center justify-between px-4 py-3 bg-white border border-warm-border hover:border-brand/40 hover:bg-white transition-colors group"
+                            >
+                              <div className="flex items-center gap-3">
+                                <PhoneCall size={13} className="text-muted shrink-0" />
+                                <div>
+                                  <p className="text-sm font-medium text-charcoal group-hover:text-brand transition-colors">
+                                    {CALL_TYPE_LABEL[call.call_type ?? ""] ?? "Call"}
+                                  </p>
+                                  <p className="text-xs text-muted mt-0.5">
+                                    {call.call_date
+                                      ? new Date(call.call_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                      : new Date(call.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                    }
+                                    {call.duration_seconds ? ` · ${formatDuration(call.duration_seconds)}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {call.overall_score != null && (
+                                  <span className={`text-xs font-mono border px-2 py-0.5 ${scoreStyle(call.overall_score)}`}>
+                                    {call.overall_score}
+                                  </span>
+                                )}
+                                <span className="text-muted text-xs group-hover:text-brand transition-colors">→</span>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
                       )}
-                    </>
-                  )}
-                  {!row.lastCallDate && <p className="text-xs text-muted italic">—</p>}
-                  {row.callCount > 0 && (
-                    <Link
-                      href={`/calls?client=${row.id}`}
-                      className="text-[10px] text-brand hover:text-brand-dark mt-2 block tracking-wide transition-colors">
-                      View calls →
-                    </Link>
-                  )}
-                </div>
+                    </div>
+
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </div>
     </div>
+  );
+}
+
+/* Inline editable location field */
+function LocationField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState(value);
+
+  function commit() {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        <MapPin size={13} className="text-muted shrink-0" />
+        <input
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(value); setEditing(false); } }}
+          className="text-sm border border-brand px-2 py-0.5 focus:outline-none flex-1"
+          placeholder="Add address…"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); setEditing(true); setDraft(value); }}
+      className="flex items-center gap-2 text-sm text-left w-full group"
+    >
+      <MapPin size={13} className="text-muted shrink-0" />
+      {value
+        ? <span className="text-charcoal group-hover:text-brand transition-colors">{value}</span>
+        : <span className="text-muted italic group-hover:text-brand transition-colors">Add address…</span>
+      }
+    </button>
   );
 }

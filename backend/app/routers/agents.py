@@ -31,6 +31,8 @@ class ClientUpdate(BaseModel):
     email: str | None = None
     type: str | None = None
     notes: str | None = None
+    client_status: str | None = None
+    location: str | None = None
 
 
 @router.post("/")
