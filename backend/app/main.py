@@ -39,4 +39,4 @@ app.include_router(guidelines.router, prefix="/api/guidelines", tags=["guideline
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "bland_webhook": True}
