@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { api, Call } from "@/lib/api";
+import { api, Agent, Call } from "@/lib/api";
 import CallUpload from "@/components/CallUpload";
 import ScoreBadge from "@/components/ScoreBadge";
 import { useToast } from "@/components/Toast";
@@ -55,6 +55,7 @@ function passesScore(call: Call, filter: string): boolean {
 export default function CallsPage() {
   const { agentId: AGENT_ID } = useAuth();
   const [calls, setCalls]           = useState<Call[]>([]);
+  const [agent, setAgent]           = useState<Agent | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [search, setSearch]         = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -63,7 +64,10 @@ export default function CallsPage() {
   const { toast } = useToast();
 
   const load = () => api.calls.list(AGENT_ID ?? undefined).then(setCalls);
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    if (AGENT_ID) api.agents.get(AGENT_ID).then(setAgent);
+  }, [AGENT_ID]);
 
   const remove = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -168,16 +172,42 @@ export default function CallsPage() {
           const dateStr = call.call_date ?? call.created_at;
           return (
             <div key={call.id} className="flex items-center justify-between px-6 py-4 hover:bg-cream group transition-colors">
-              <Link href={`/calls/${call.id}`} className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-charcoal truncate">{call.clients?.name ?? "No client linked"}</p>
-                <p className="text-xs text-muted mt-0.5">
-                  {CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified"} ·{" "}
-                  {call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"} ·{" "}
-                  {new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                </p>
-              </Link>
+              {/* Left: client name (→ client file) + call meta (→ call detail) */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  {call.client_id ? (
+                    <Link
+                      href={`/clients?open=${call.client_id}`}
+                      className="text-sm font-medium text-charcoal hover:text-brand transition-colors truncate"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {call.clients?.name ?? "Unknown client"}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-medium text-muted italic">No client linked</span>
+                  )}
+                  {agent && (
+                    <Link
+                      href={`/agents/${call.agent_id}`}
+                      className="text-[10px] text-muted hover:text-brand transition-colors tracking-wide"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {agent.name}
+                    </Link>
+                  )}
+                </div>
+                <Link href={`/calls/${call.id}`} className="block">
+                  <p className="text-xs text-muted mt-0.5">
+                    {CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified"} ·{" "}
+                    {call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"} ·{" "}
+                    {new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </Link>
+              </div>
               <div className="flex items-center gap-4 shrink-0 ml-4">
-                <ScoreBadge score={call.overall_score} status={call.status} />
+                <Link href={`/calls/${call.id}`}>
+                  <ScoreBadge score={call.overall_score} status={call.status} />
+                </Link>
                 <button onClick={e => remove(call.id, e)}
                   className="text-warm-border hover:text-brand opacity-0 group-hover:opacity-100 transition-all">
                   <Trash2 size={14} />

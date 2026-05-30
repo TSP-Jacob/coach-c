@@ -7,6 +7,7 @@ import CoachingReport from "@/components/CoachingReport";
 import TranscriptViewer from "@/components/TranscriptViewer";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useToast } from "@/components/Toast";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
 const CALL_TYPE_LABELS: Record<string, string> = {
@@ -93,15 +94,28 @@ export default function CallDetailPage() {
           <p className="text-[10px] tracking-widest uppercase text-muted mb-1">
             {CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified call"}
           </p>
-          <h1 className="text-3xl font-serif font-bold text-charcoal leading-tight truncate">
-            {call.clients?.name ?? "Unknown client"}
-          </h1>
+          {call.client_id ? (
+            <Link href={`/clients?open=${call.client_id}`}>
+              <h1 className="text-3xl font-serif font-bold text-charcoal leading-tight truncate hover:text-brand transition-colors">
+                {call.clients?.name ?? "Unknown client"}
+              </h1>
+            </Link>
+          ) : (
+            <h1 className="text-3xl font-serif font-bold text-charcoal leading-tight truncate">
+              {call.clients?.name ?? "Unknown client"}
+            </h1>
+          )}
           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
             <p className="text-xs text-muted">{dateFormatted}{timeFormatted ? ` · ${timeFormatted}` : ""}</p>
             {call.duration_seconds && (
               <p className="text-xs text-muted">
                 {Math.floor(call.duration_seconds / 60)}m {call.duration_seconds % 60}s
               </p>
+            )}
+            {call.agents?.name && (
+              <Link href={`/agents/${call.agent_id}`} className="text-xs text-muted hover:text-brand transition-colors">
+                {call.agents.name} →
+              </Link>
             )}
           </div>
         </div>

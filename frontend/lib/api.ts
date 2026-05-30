@@ -87,6 +87,7 @@ export interface Call {
   audio_url?: string;
   realtor_speaker?: string;
   clients?: { name: string };
+  agents?: { name: string };
   created_at: string; updated_at?: string;
 }
 

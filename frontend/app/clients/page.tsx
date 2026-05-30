@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, Call, Client, Agent } from "@/lib/api";
 import Link from "next/link";
 import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall } from "lucide-react";
@@ -58,11 +59,12 @@ interface ClientRow extends Client {
 
 export default function ClientsPage() {
   const { agentId: AGENT_ID } = useAuth();
+  const searchParams = useSearchParams();
   const [clients,    setClients]    = useState<Client[]>([]);
   const [calls,      setCalls]      = useState<Call[]>([]);
   const [agents,     setAgents]     = useState<Agent[]>([]);
   const [search,     setSearch]     = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(searchParams.get("open"));
 
   useEffect(() => {
     if (!AGENT_ID) return;
@@ -70,6 +72,16 @@ export default function ClientsPage() {
     api.calls.list(AGENT_ID).then(setCalls);
     api.agents.list().then(setAgents);
   }, [AGENT_ID]);
+
+  // Scroll the auto-opened client row into view
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId) return;
+    setExpandedId(openId);
+    setTimeout(() => {
+      document.getElementById(`client-${openId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 300);
+  }, [searchParams]);
 
   const rows: ClientRow[] = useMemo(() => {
     return clients.map(client => {
@@ -148,7 +160,7 @@ export default function ClientsPage() {
             const statusStyle = CLIENT_STATUS_STYLE[statusLabel] ?? "text-muted border-warm-border bg-white";
 
             return (
-              <div key={row.id}>
+              <div key={row.id} id={`client-${row.id}`}>
                 {/* Summary row — click to expand */}
                 <div
                   onClick={() => setExpandedId(isOpen ? null : row.id)}
