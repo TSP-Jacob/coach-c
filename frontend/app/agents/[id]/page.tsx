@@ -14,7 +14,7 @@ export default function AgentDetailPage() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [showClientForm, setShowClientForm] = useState(false);
-  const [tab, setTab] = useState<"calls" | "clients">("calls");
+  const [tab, setTab] = useState<"calls" | "clients">("clients");
 
   const load = () => Promise.all([
     api.agents.get(id).then(setAgent),
