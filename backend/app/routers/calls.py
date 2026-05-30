@@ -228,12 +228,13 @@ async def bland_webhook(request: Request, background_tasks: BackgroundTasks):
     # ── Insert call record ────────────────────────────────────────
     phone_hint = re.sub(r"\D", "", from_number)[-10:] if from_number else None
 
+    # NOTE: do NOT set call_type here — that column is constrained to the
+    # coaching classification values and is populated later by _process_call.
     call = db.table("calls").insert({
         "agent_id":         agent["id"],
         "audio_url":        audio_url,
         "call_date":        created_at,
         "status":           "uploaded",
-        "call_type":        direction,
         "duration_seconds": duration_sec,
     }).execute().data[0]
 
