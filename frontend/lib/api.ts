@@ -31,17 +31,30 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  leads: {
+    list: (agentId?: string, source?: string, status?: string) => {
+      const p = new URLSearchParams();
+      if (agentId) p.set("agent_id", agentId);
+      if (source)  p.set("source", source);
+      if (status)  p.set("status", status);
+      return req<Lead[]>(`/api/leads/?${p}`);
+    },
+    update: (id: string, body: { status?: string; agent_id?: string }) =>
+      req<Lead>(`/api/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  },
   calls: {
     list: (agentId?: string) => req<Call[]>(`/api/calls/${agentId ? `?agent_id=${agentId}` : ""}`),
     get: (id: string) => req<Call>(`/api/calls/${id}`),
     delete: (id: string) => req(`/api/calls/${id}`, { method: "DELETE" }),
     upload: async (form: FormData) => {
       const auth = await authHeaders();
-      return fetch(`${BASE}/api/calls/upload`, {
+      const res = await fetch(`${BASE}/api/calls/upload`, {
         method: "POST",
         headers: auth,
         body: form,
-      }).then((r) => r.json());
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
     },
   },
   agents: {
@@ -104,4 +117,22 @@ export interface Client {
 
 export interface ChatMessage {
   role: "user" | "assistant"; content: string; created_at: string;
+}
+
+export interface Lead {
+  id: string;
+  agent_id: string | null;
+  name: string;
+  phone?: string;
+  email?: string;
+  source: "call" | "home_value";
+  status: "new" | "contacted" | "converted" | "lost";
+  address?: string;
+  city?: string;
+  province?: string;
+  property_type?: string;
+  estimated_value?: number;
+  timeline_to_sell?: string;
+  call_id?: string;
+  created_at: string;
 }

@@ -44,15 +44,15 @@ def _resolve_client(
     coaching_svc: CoachingService,
     full_text: str,
     phone_hint: str | None,
-) -> str | None:
-    """Return a client_id — matching existing or creating a new profile."""
+) -> tuple[str | None, bool, str | None]:
+    """Return (client_id, is_new_client, name) — matching existing or creating a new profile."""
     clients = db.table("clients").select("id, name, phone, email").eq("agent_id", agent_id).execute().data
 
     # 1. Phone-first match (most reliable)
     if phone_hint:
         for c in clients:
             if _normalize_phone(c.get("phone") or "") == phone_hint:
-                return c["id"]
+                return c["id"], False, c.get("name")
 
     # 2. AI name/context match
     result = coaching_svc.identify_client(full_text, clients)
@@ -62,7 +62,7 @@ def _resolve_client(
             matched = next((c for c in clients if c["id"] == result["matched_client_id"]), None)
             if matched and not matched.get("phone"):
                 db.table("clients").update({"phone": phone_hint}).eq("id", result["matched_client_id"]).execute()
-        return result["matched_client_id"]
+        return result["matched_client_id"], False, None
 
     # 3. Create new client profile
     name = result.get("extracted_name") or "Unknown Client"
@@ -73,7 +73,7 @@ def _resolve_client(
         "phone": phone,
         "type": "buyer",
     }).execute().data[0]
-    return new_client["id"]
+    return new_client["id"], True, name
 
 
 def _get_services():
@@ -114,9 +114,18 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
         # Resolve client if not manually provided
         if not client_id:
             try:
-                client_id = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint)
+                client_id, is_new_lead, lead_name = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint)
                 if client_id:
                     db.table("calls").update({"client_id": client_id}).eq("id", call_id).execute()
+                if is_new_lead and client_id:
+                    db.table("leads").insert({
+                        "agent_id": agent_id,
+                        "name": lead_name or "Unknown Client",
+                        "phone": phone_hint,
+                        "source": "call",
+                        "status": "new",
+                        "call_id": call_id,
+                    }).execute()
             except Exception as resolve_err:
                 print(f"[calls] client resolution failed (non-fatal): {resolve_err}")
 

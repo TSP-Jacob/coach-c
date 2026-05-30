@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut } from "lucide-react";
+import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/lib/auth";
 
@@ -10,6 +10,7 @@ const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
 const nav = [
   { href: "/",           label: "Dashboard",  icon: LayoutDashboard },
+  { href: "/leads",      label: "Leads",      icon: UserPlus },
   { href: "/calls",      label: "Calls",      icon: Phone },
   { href: "/clients",    label: "Clients",    icon: Contact },
   { href: "/chat",       label: "Coach-C",    icon: MessageSquare },
