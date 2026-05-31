@@ -155,6 +155,15 @@ def create_client(body: ClientCreate):
     return client
 
 
+@router.get("/clients/{client_id}")
+def get_client(client_id: str):
+    db = get_supabase()
+    result = db.table("clients").select("*").eq("id", client_id).maybe_single().execute()
+    if not result or not result.data:
+        raise HTTPException(status_code=404, detail="Client not found")
+    return result.data
+
+
 @router.get("/{agent_id}/clients")
 def list_clients(agent_id: str):
     db = get_supabase()

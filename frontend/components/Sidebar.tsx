@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus } from "lucide-react";
+import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/lib/auth";
 
@@ -16,6 +16,7 @@ const nav = [
   { href: "/chat",       label: "Coach-C",    icon: MessageSquare },
   { href: "/agents",     label: "Agents",     icon: Users },
   { href: "/guidelines", label: "Guidelines", icon: BookOpen },
+  { href: "/notes",      label: "Notes",      icon: NotebookPen },
 ];
 
 function NavLinks({ onNav }: { onNav?: () => void }) {

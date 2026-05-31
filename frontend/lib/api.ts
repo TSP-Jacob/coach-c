@@ -61,11 +61,23 @@ export const api = {
     list: () => req<Agent[]>(`/api/agents/`),
     get: (id: string) => req<Agent>(`/api/agents/${id}`),
     stats: (id: string) => req<AgentStats>(`/api/agents/${id}/stats`),
+    getClient: (clientId: string) => req<Client>(`/api/agents/clients/${clientId}`),
     listClients: (agentId: string) => req<Client[]>(`/api/agents/${agentId}/clients`),
     createClient: (body: Partial<Client>) =>
       req<Client>(`/api/agents/clients`, { method: "POST", body: JSON.stringify(body) }),
     updateClient: (id: string, body: Partial<Client>) =>
       req<Client>(`/api/agents/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  },
+  notes: {
+    list: (agentId?: string, clientId?: string) => {
+      const p = new URLSearchParams();
+      if (agentId)  p.set("agent_id", agentId);
+      if (clientId) p.set("client_id", clientId);
+      return req<Note[]>(`/api/notes/?${p}`);
+    },
+    create: (agentId: string, body: { content: string; client_id?: string }) =>
+      req<Note>(`/api/notes/?agent_id=${agentId}`, { method: "POST", body: JSON.stringify(body) }),
+    delete: (id: string) => req(`/api/notes/${id}`, { method: "DELETE" }),
   },
   chat: {
     send: (agentId: string, message: string, clientId?: string, timezone?: string) =>
@@ -120,6 +132,15 @@ export interface Client {
 
 export interface ChatMessage {
   role: "user" | "assistant"; content: string; created_at: string;
+}
+
+export interface Note {
+  id: string;
+  agent_id: string;
+  client_id?: string;
+  content: string;
+  created_at: string;
+  clients?: { name: string };
 }
 
 export interface Lead {
