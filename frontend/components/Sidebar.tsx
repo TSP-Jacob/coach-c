@@ -9,15 +9,15 @@ import { useAuth } from "@/lib/auth";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
 const nav = [
-  { href: "/",           label: "Dashboard",  icon: LayoutDashboard },
-  { href: "/leads",      label: "Leads",      icon: UserPlus },
-  { href: "/calls",      label: "Calls",      icon: Phone },
-  { href: "/clients",    label: "Clients",    icon: Contact },
-  { href: "/chat",       label: "Assistant",  icon: MessageSquare },
-  { href: "/agents",     label: "Agents",     icon: Users },
-  { href: "/guidelines", label: "Guidelines", icon: BookOpen },
-  { href: "/notes",         label: "Notes",        icon: NotebookPen },
-  { href: "/organization",  label: "Organization",  icon: Building2 },
+  { href: "/",             label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/leads",        label: "Leads",        icon: UserPlus },
+  { href: "/calls",        label: "Calls",        icon: Phone },
+  { href: "/clients",      label: "Clients",      icon: Contact },
+  { href: "/chat",         label: "Assistant",    icon: MessageSquare },
+  { href: "/agents",       label: "Agents",       icon: Users },
+  { href: "/notes",        label: "Notes",        icon: NotebookPen },
+  { href: "/organization", label: "Organization", icon: Building2 },
+  { href: "/guidelines",   label: "Guidelines",   icon: BookOpen },
 ];
 
 function NavLinks({ onNav }: { onNav?: () => void }) {

@@ -2,6 +2,7 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import AuthGuard from "./AuthGuard";
+import FloatingAssistant from "./FloatingAssistant";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,6 +18,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-y-auto p-8 pt-16 md:pt-8">
         {children}
       </main>
+      {/* Floating assistant bubble — hidden on the full /chat page */}
+      {!pathname.startsWith("/chat") && <FloatingAssistant />}
     </AuthGuard>
   );
 }
