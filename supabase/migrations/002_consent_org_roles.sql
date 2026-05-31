@@ -1,10 +1,12 @@
 -- Migration 002 — Consent logging, Organization Profile fields, Agent roles
 -- Run this in your Supabase SQL editor
 
--- ─── Agent roles ─────────────────────────────────────────────────────────────
+-- ─── Roles on agents ─────────────────────────────────────────────────────────
+-- Roles belong to the client portal account, not the profession.
+-- "agent" (realtor) is a person, not a role — roles are admin/manager/employee.
 ALTER TABLE agents
-  ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'agent'
-  CHECK (role IN ('admin', 'manager', 'agent'));
+  ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'employee'
+  CHECK (role IN ('admin', 'manager', 'employee'));
 
 -- ─── Brokerage / Organization Profile fields ─────────────────────────────────
 ALTER TABLE brokerages

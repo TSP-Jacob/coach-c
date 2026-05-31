@@ -40,7 +40,7 @@ def get_my_org(agent_id: str = Depends(get_jwt_agent_id)):
         raise HTTPException(status_code=401, detail="Authentication required")
     agent = _get_agent_with_brokerage(agent_id)
     brokerage = agent.get("brokerages") or {}
-    return {**brokerage, "agent_role": agent.get("role", "agent")}
+    return {**brokerage, "agent_role": agent.get("role", "employee")}
 
 
 @router.patch("/")
@@ -48,7 +48,7 @@ def update_my_org(body: OrgProfileUpdate, agent_id: str = Depends(get_jwt_agent_
     if not agent_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     agent = _get_agent_with_brokerage(agent_id)
-    role = agent.get("role", "agent")
+    role = agent.get("role", "employee")
     if role not in ("admin", "manager"):
         raise HTTPException(status_code=403, detail="Manager or admin role required")
 

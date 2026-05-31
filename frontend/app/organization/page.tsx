@@ -19,6 +19,7 @@ export default function OrganizationPage() {
 
   const isAdmin   = profile?.agent_role === "admin";
   const canEdit   = profile?.agent_role === "admin" || profile?.agent_role === "manager";
+  // "employee" is the default role — view only
 
   useEffect(() => {
     api.organization.get()
@@ -72,7 +73,7 @@ export default function OrganizationPage() {
       <div className="border-b border-warm-border pb-5">
         <h1 className="text-4xl font-serif font-bold text-charcoal">Organization Profile</h1>
         <p className="text-xs text-muted mt-1 tracking-widest uppercase">
-          {isAdmin ? "Admin — manage all organizations" : canEdit ? "Manager — edit your organization" : "View only"}
+          {isAdmin ? "Admin — manage all organizations" : canEdit ? "Manager — edit your organization" : "Employee — view only"}
         </p>
       </div>
 
