@@ -1,10 +1,13 @@
 import hashlib
 import hmac
+import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from app.database import get_supabase
 from app.middleware.auth import get_jwt_agent_id
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -26,6 +29,7 @@ class HomeValuePayload(BaseModel):
     estimated_value: float | None = None
     timeline_to_sell: str | None = None
     consent_given: bool = False
+    consent_text: str | None = None  # exact consent paragraph shown to homeowner
 
 
 @router.get("/")
@@ -111,10 +115,14 @@ async def homevalue_webhook(request: Request):
     # 2. Also create a client record so the lead appears in the Clients section
     # Skip if a client with the same phone already exists (avoid duplicates)
     existing = None
+    client_id = None
     if payload.owner_phone:
-        existing = db.table("clients").select("id").eq("phone", payload.owner_phone).execute().data
-    if not existing:
-        db.table("clients").insert({
+        existing_rows = db.table("clients").select("id").eq("phone", payload.owner_phone).execute().data
+        existing = existing_rows[0] if existing_rows else None
+    if existing:
+        client_id = existing["id"]
+    else:
+        client_result = db.table("clients").insert({
             "name": payload.owner_name,
             "phone": payload.owner_phone,
             "email": payload.owner_email,
@@ -123,5 +131,71 @@ async def homevalue_webhook(request: Request):
             "location": location,
             # agent_id intentionally null — unassigned until picked up
         }).execute()
+        if client_result.data:
+            client_id = client_result.data[0]["id"]
 
-    return {"lead_id": lead.get("id")}
+    # 3. Store consent record if consent was given
+    lead_id = lead.get("id")
+    if payload.consent_given and payload.consent_text and client_id:
+        # Look up the org email from any brokerage that has one set
+        org_email = None
+        try:
+            brokerage_rows = db.table("brokerages").select("email").not_.is_("email", "null").limit(1).execute().data
+            if brokerage_rows:
+                org_email = brokerage_rows[0].get("email")
+        except Exception:
+            pass
+
+        db.table("consents").insert({
+            "client_id": client_id,
+            "lead_id": lead_id,
+            "owner_name": payload.owner_name,
+            "owner_email": payload.owner_email,
+            "owner_phone": payload.owner_phone,
+            "consent_text": payload.consent_text,
+            "sent_to_email": org_email,
+        }).execute()
+
+        # 4. Send consent log email to the org if we have an address and a Resend key
+        if org_email:
+            _send_consent_email(org_email, payload, lead_id, client_id)
+
+    return {"lead_id": lead_id}
+
+
+def _send_consent_email(to_email: str, payload: "HomeValuePayload", lead_id, client_id):
+    """Send consent notification email via Resend (https://resend.com).
+    Requires RESEND_API_KEY env var. Fails silently so the webhook always succeeds."""
+    import httpx
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    if not api_key:
+        logger.info("RESEND_API_KEY not set — skipping consent email")
+        return
+    try:
+        body_html = f"""
+<h2>Consent Log — Home Value</h2>
+<p><strong>Homeowner:</strong> {payload.owner_name}</p>
+<p><strong>Phone:</strong> {payload.owner_phone or "—"}</p>
+<p><strong>Email:</strong> {payload.owner_email or "—"}</p>
+<p><strong>Property:</strong> {", ".join(p for p in [payload.address, payload.city, payload.province] if p)}</p>
+<hr/>
+<h3>Consent text shown to homeowner:</h3>
+<blockquote style="border-left:3px solid #ccc;padding-left:12px;color:#555">
+  {payload.consent_text}
+</blockquote>
+<hr/>
+<p style="color:#888;font-size:12px">Lead ID: {lead_id} · Client ID: {client_id}</p>
+"""
+        httpx.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "from": "HomeValue <noreply@chardinsystems.com>",
+                "to": [to_email],
+                "subject": f"Consent received — {payload.owner_name} ({payload.city or ''})",
+                "html": body_html,
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning("Failed to send consent email: %s", e)

@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { api, Call, Client, Agent } from "@/lib/api";
+import { api, Call, Client, Agent, Consent } from "@/lib/api";
 import Link from "next/link";
-import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall } from "lucide-react";
+import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -65,6 +65,7 @@ export default function ClientsPage() {
   const [agents,     setAgents]     = useState<Agent[]>([]);
   const [search,     setSearch]     = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(searchParams.get("open"));
+  const [consentsMap, setConsentsMap] = useState<Record<string, Consent[]>>({});
 
   useEffect(() => {
     if (!AGENT_ID) return;
@@ -72,6 +73,16 @@ export default function ClientsPage() {
     api.calls.list(AGENT_ID).then(setCalls);
     api.agents.list().then(setAgents);
   }, [AGENT_ID]);
+
+  // Load consents when a client row is expanded
+  useEffect(() => {
+    if (!expandedId || consentsMap[expandedId]) return;
+    api.consents.list(expandedId).then(data => {
+      setConsentsMap(prev => ({ ...prev, [expandedId]: data }));
+    }).catch(() => {
+      setConsentsMap(prev => ({ ...prev, [expandedId]: [] }));
+    });
+  }, [expandedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll the auto-opened client row into view
   useEffect(() => {
@@ -291,6 +302,18 @@ export default function ClientsPage() {
                       </div>
                     </div>
 
+                    {/* Consent badges */}
+                    {(consentsMap[row.id]?.length ?? 0) > 0 && (
+                      <div>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-3">Consent</p>
+                        <div className="flex flex-wrap gap-2">
+                          {consentsMap[row.id].map(c => (
+                            <ConsentBadge key={c.id} consent={c} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Communications list */}
                     <div>
                       <p className="text-[10px] tracking-widest uppercase text-muted mb-3">Communications</p>
@@ -341,6 +364,62 @@ export default function ClientsPage() {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* Consent badge with hover tooltip */
+function ConsentBadge({ consent }: { consent: Consent }) {
+  const [hovered, setHovered] = useState(false);
+  const ts = new Date(consent.created_at).toLocaleString("en-CA", {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  return (
+    <div className="relative inline-block" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      {/* Badge chip */}
+      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-200 cursor-default select-none">
+        <ShieldCheck size={12} className="text-green-600 shrink-0" />
+        <span className="text-xs text-green-700 font-medium">Consent</span>
+        <span className="text-[10px] text-green-500 ml-1">{ts}</span>
+      </div>
+
+      {/* Hover tooltip */}
+      {hovered && (
+        <div className="absolute bottom-full left-0 mb-2 z-50 w-96 bg-white border border-warm-border shadow-lg p-4 space-y-3">
+          <p className="text-[10px] tracking-widest uppercase text-muted">Consent Record</p>
+
+          <div className="space-y-1">
+            <p className="text-xs text-muted">Recorded: <span className="text-charcoal">{ts}</span></p>
+            {consent.sent_to_email && (
+              <p className="text-xs text-muted flex items-center gap-1">
+                <Mail size={10} />
+                Log sent to: <span className="text-charcoal ml-1">{consent.sent_to_email}</span>
+              </p>
+            )}
+            {consent.owner_email && (
+              <p className="text-xs text-muted flex items-center gap-1">
+                <Mail size={10} />
+                Homeowner email: <span className="text-charcoal ml-1">{consent.owner_email}</span>
+              </p>
+            )}
+            {consent.owner_phone && (
+              <p className="text-xs text-muted flex items-center gap-1">
+                <Phone size={10} />
+                Homeowner phone: <span className="text-charcoal ml-1">{consent.owner_phone}</span>
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Consent text shown to homeowner</p>
+            <p className="text-xs text-charcoal leading-relaxed bg-cream border border-warm-border p-2.5 whitespace-pre-wrap">
+              {consent.consent_text}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

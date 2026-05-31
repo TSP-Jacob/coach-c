@@ -34,6 +34,7 @@ export default function CallUpload({ agentId, onSuccess }: Props) {
     setRunning(true);
     setGlobalError("");
 
+    let anySucceeded = false;
     for (const { item, i } of pending) {
       setItemStatus(i, "uploading");
       try {
@@ -48,18 +49,14 @@ export default function CallUpload({ agentId, onSuccess }: Props) {
         }
         await api.calls.upload(form);
         setItemStatus(i, "done");
+        anySucceeded = true;
       } catch (e: unknown) {
         setItemStatus(i, "error", e instanceof Error ? e.message : "Upload failed");
       }
     }
 
     setRunning(false);
-    const updated = queue.map((item, i) => {
-      const match = pending.find(p => p.i === i);
-      return match ? { ...item } : item;
-    });
-    const allDone = updated.every(item => item.status === "done" || item.status === "error");
-    if (allDone) {
+    if (anySucceeded) {
       onSuccess();
     }
   };

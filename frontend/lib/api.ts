@@ -98,6 +98,17 @@ export const api = {
       return req(`/api/chat/history/${agentId}${p}`, { method: "DELETE" });
     },
   },
+  organization: {
+    get: () => req<OrgProfile>(`/api/organization/`),
+    update: (body: Partial<OrgProfile>) =>
+      req<OrgProfile>(`/api/organization/`, { method: "PATCH", body: JSON.stringify(body) }),
+    listAll: () => req<OrgProfile[]>(`/api/organization/all`),
+    updateById: (id: string, body: Partial<OrgProfile>) =>
+      req<OrgProfile>(`/api/organization/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  },
+  consents: {
+    list: (clientId: string) => req<Consent[]>(`/api/consents/?client_id=${clientId}`),
+  },
   conversations: {
     list: (agentId: string) => req<Conversation[]>(`/api/conversations/?agent_id=${agentId}`),
     create: (agentId: string, title?: string) =>
@@ -170,6 +181,27 @@ export interface Note {
   content: string;
   created_at: string;
   clients?: { name: string };
+}
+
+export interface OrgProfile {
+  id: string;
+  name: string;
+  primary_contact?: string;
+  industry?: string;
+  email?: string;
+  agent_role?: string; // only present on GET /organization/
+}
+
+export interface Consent {
+  id: string;
+  client_id?: string;
+  lead_id?: string;
+  owner_name?: string;
+  owner_email?: string;
+  owner_phone?: string;
+  consent_text: string;
+  sent_to_email?: string;
+  created_at: string;
 }
 
 export interface Lead {
