@@ -31,6 +31,13 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  calendar: {
+    status: (agentId: string) =>
+      req<{ connected: boolean; email: string | null }>(`/api/calendar/status?agent_id=${agentId}`),
+    authUrl: (agentId: string) => `${BASE}/api/calendar/auth?agent_id=${agentId}`,
+    disconnect: (agentId: string) =>
+      req(`/api/calendar/disconnect?agent_id=${agentId}`, { method: "DELETE" }),
+  },
   leads: {
     list: (agentId?: string, source?: string, status?: string) => {
       const p = new URLSearchParams();
