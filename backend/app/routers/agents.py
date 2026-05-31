@@ -158,7 +158,8 @@ def create_client(body: ClientCreate):
 @router.get("/{agent_id}/clients")
 def list_clients(agent_id: str):
     db = get_supabase()
-    return db.table("clients").select("*").eq("agent_id", agent_id).order("name").execute().data
+    # Include clients assigned to this agent OR unassigned (HomeValue leads, etc.)
+    return db.table("clients").select("*").or_(f"agent_id.eq.{agent_id},agent_id.is.null").order("name").execute().data
 
 
 @router.patch("/clients/{client_id}")

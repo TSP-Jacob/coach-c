@@ -39,7 +39,8 @@ def list_leads(
     if not effective_agent_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     db = get_supabase()
-    q = db.table("leads").select("*").eq("agent_id", effective_agent_id)
+    # Return leads assigned to this agent OR unassigned (agent_id IS NULL)
+    q = db.table("leads").select("*").or_(f"agent_id.eq.{effective_agent_id},agent_id.is.null")
     if source:
         q = q.eq("source", source)
     if status:
@@ -86,7 +87,13 @@ async def homevalue_webhook(request: Request):
     payload = HomeValuePayload.model_validate_json(body_bytes)
 
     db = get_supabase()
-    result = db.table("leads").insert({
+
+    # Build location string from address parts
+    location_parts = [p for p in [payload.address, payload.city, payload.province] if p]
+    location = ", ".join(location_parts) if location_parts else None
+
+    # 1. Create lead record
+    lead_result = db.table("leads").insert({
         "name": payload.owner_name,
         "phone": payload.owner_phone,
         "email": payload.owner_email,
@@ -99,6 +106,22 @@ async def homevalue_webhook(request: Request):
         "estimated_value": payload.estimated_value,
         "timeline_to_sell": payload.timeline_to_sell,
     }).execute()
+    lead = lead_result.data[0] if lead_result.data else {}
 
-    lead = result.data[0] if result.data else {}
+    # 2. Also create a client record so the lead appears in the Clients section
+    # Skip if a client with the same phone already exists (avoid duplicates)
+    existing = None
+    if payload.owner_phone:
+        existing = db.table("clients").select("id").eq("phone", payload.owner_phone).execute().data
+    if not existing:
+        db.table("clients").insert({
+            "name": payload.owner_name,
+            "phone": payload.owner_phone,
+            "email": payload.owner_email,
+            "type": "seller",
+            "client_status": "Lead",
+            "location": location,
+            # agent_id intentionally null — unassigned until picked up
+        }).execute()
+
     return {"lead_id": lead.get("id")}
