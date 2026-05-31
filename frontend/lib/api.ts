@@ -80,13 +80,34 @@ export const api = {
     delete: (id: string) => req(`/api/notes/${id}`, { method: "DELETE" }),
   },
   chat: {
-    send: (agentId: string, message: string, clientId?: string, timezone?: string) =>
+    send: (agentId: string, message: string, conversationId?: string, clientId?: string, timezone?: string) =>
       req<{ reply: string }>(`/api/chat/`, {
         method: "POST",
-        body: JSON.stringify({ agent_id: agentId, message, client_id: clientId, timezone: timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone }),
+        body: JSON.stringify({
+          agent_id: agentId, message, client_id: clientId,
+          conversation_id: conversationId,
+          timezone: timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       }),
-    history: (agentId: string) => req<ChatMessage[]>(`/api/chat/history/${agentId}`),
-    clear: (agentId: string) => req(`/api/chat/history/${agentId}`, { method: "DELETE" }),
+    history: (agentId: string, conversationId?: string) => {
+      const p = conversationId ? `?conversation_id=${conversationId}` : "";
+      return req<ChatMessage[]>(`/api/chat/history/${agentId}${p}`);
+    },
+    clear: (agentId: string, conversationId?: string) => {
+      const p = conversationId ? `?conversation_id=${conversationId}` : "";
+      return req(`/api/chat/history/${agentId}${p}`, { method: "DELETE" });
+    },
+  },
+  conversations: {
+    list: (agentId: string) => req<Conversation[]>(`/api/conversations/?agent_id=${agentId}`),
+    create: (agentId: string, title?: string) =>
+      req<Conversation>(`/api/conversations/?agent_id=${agentId}`, {
+        method: "POST",
+        body: JSON.stringify({ title: title ?? "New conversation" }),
+      }),
+    rename: (id: string, title: string) =>
+      req<Conversation>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+    delete: (id: string) => req(`/api/conversations/${id}`, { method: "DELETE" }),
   },
 };
 
@@ -132,6 +153,14 @@ export interface Client {
 
 export interface ChatMessage {
   role: "user" | "assistant"; content: string; created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  agent_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Note {

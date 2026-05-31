@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
     message: str
     client_id: str | None = None
     timezone: str | None = None
+    conversation_id: str | None = None
 
 
 def _build_calls_context(db, agent_id: str, tz_name: str | None = None) -> str:
@@ -64,9 +65,13 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
     if not agent_id:
         return {"reply": "Authentication required."}
 
-    history = db.table("chat_messages").select("role, content").eq(
-        "agent_id", agent_id
-    ).order("created_at").limit(40).execute().data
+    conv_id = body.conversation_id
+    history_q = db.table("chat_messages").select("role, content").eq("agent_id", agent_id)
+    if conv_id:
+        history_q = history_q.eq("conversation_id", conv_id)
+    else:
+        history_q = history_q.is_("conversation_id", "null")
+    history = history_q.order("created_at").limit(40).execute().data
 
     calls_context = _build_calls_context(db, agent_id, body.timezone)
 
@@ -87,24 +92,42 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
         agent_name=agent_name,
     )
 
+    row_base = {"agent_id": agent_id, "role": "user", "content": body.message}
+    if conv_id:
+        row_base["conversation_id"] = conv_id
     db.table("chat_messages").insert([
-        {"agent_id": agent_id, "role": "user", "content": body.message},
-        {"agent_id": agent_id, "role": "assistant", "content": reply},
+        row_base,
+        {**row_base, "role": "assistant", "content": reply},
     ]).execute()
+
+    # Bump conversation updated_at so it floats to top of list
+    if conv_id:
+        from datetime import datetime, timezone
+        db.table("conversations").update(
+            {"updated_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", conv_id).execute()
 
     return {"reply": reply}
 
 
 @router.get("/history/{agent_id}")
-def get_history(agent_id: str, limit: int = 50):
+def get_history(agent_id: str, conversation_id: str | None = None, limit: int = 50):
     db = get_supabase()
-    return db.table("chat_messages").select("role, content, created_at").eq(
-        "agent_id", agent_id
-    ).order("created_at").limit(limit).execute().data
+    q = db.table("chat_messages").select("role, content, created_at").eq("agent_id", agent_id)
+    if conversation_id:
+        q = q.eq("conversation_id", conversation_id)
+    else:
+        q = q.is_("conversation_id", "null")
+    return q.order("created_at").limit(limit).execute().data
 
 
 @router.delete("/history/{agent_id}")
-def clear_history(agent_id: str):
+def clear_history(agent_id: str, conversation_id: str | None = None):
     db = get_supabase()
-    db.table("chat_messages").delete().eq("agent_id", agent_id).execute()
+    q = db.table("chat_messages").delete().eq("agent_id", agent_id)
+    if conversation_id:
+        q = q.eq("conversation_id", conversation_id)
+    else:
+        q = q.is_("conversation_id", "null")
+    q.execute()
     return {"cleared": True}

@@ -13,7 +13,7 @@ const nav = [
   { href: "/leads",      label: "Leads",      icon: UserPlus },
   { href: "/calls",      label: "Calls",      icon: Phone },
   { href: "/clients",    label: "Clients",    icon: Contact },
-  { href: "/chat",       label: "Coach-C",    icon: MessageSquare },
+  { href: "/chat",       label: "Assistant",  icon: MessageSquare },
   { href: "/agents",     label: "Agents",     icon: Users },
   { href: "/guidelines", label: "Guidelines", icon: BookOpen },
   { href: "/notes",      label: "Notes",      icon: NotebookPen },
