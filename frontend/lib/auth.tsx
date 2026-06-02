@@ -15,31 +15,33 @@ export function getExtToken(): string | null {
 interface AuthCtx {
   session: Session | null;
   agentId: string | null;
+  role: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthCtx>({
-  session: null, agentId: null, loading: true,
+  session: null, agentId: null, role: null, loading: true,
   signOut: async () => {},
 });
 
-async function fetchAgentId(token: string): Promise<string | null> {
+async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null }> {
   try {
     const res = await fetch(`${BASE}/api/agents/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { id: null, role: null };
     const data = await res.json();
-    return data.id ?? null;
+    return { id: data.id ?? null, role: data.role ?? null };
   } catch {
-    return null;
+    return { id: null, role: null };
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [agentId, setAgentId] = useState<string | null>(SKIP_AUTH ? DEMO_AGENT_ID : null);
+  const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(!SKIP_AUTH);
 
   useEffect(() => {
@@ -51,8 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const extToken = urlToken || getExtToken();
     if (extToken) {
-      fetchAgentId(extToken).then(id => {
+      fetchAgent(extToken).then(({ id, role }) => {
         setAgentId(id);
+        setRole(role);
         setLoading(false);
       });
       return;
@@ -61,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session?.access_token) {
-        setAgentId(await fetchAgentId(session.access_token));
+        const { id, role } = await fetchAgent(session.access_token);
+        setAgentId(id);
+        setRole(role);
       }
       setLoading(false);
     });
@@ -69,9 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
       setSession(session);
       if (session?.access_token) {
-        setAgentId(await fetchAgentId(session.access_token));
+        const { id, role } = await fetchAgent(session.access_token);
+        setAgentId(id);
+        setRole(role);
       } else {
         setAgentId(null);
+        setRole(null);
       }
     });
 
@@ -80,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      session, agentId, loading,
+      session, agentId, role, loading,
       signOut: async () => { await supabase.auth.signOut(); },
     }}>
       {children}

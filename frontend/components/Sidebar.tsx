@@ -2,13 +2,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2 } from "lucide-react";
+import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2, CreditCard } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/lib/auth";
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
-const nav = [
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; roles?: string[] };
+
+const nav: NavItem[] = [
   { href: "/",             label: "Dashboard",    icon: LayoutDashboard },
   { href: "/leads",        label: "Leads",        icon: UserPlus },
   { href: "/calls",        label: "Calls",        icon: Phone },
@@ -18,13 +20,18 @@ const nav = [
   { href: "/notes",        label: "Notes",        icon: NotebookPen },
   { href: "/organization", label: "Organization", icon: Building2 },
   { href: "/guidelines",   label: "Guidelines",   icon: BookOpen },
+  // Billing — managers see their own; admins see the configuration view
+  { href: "/billing",       label: "Billing",         icon: CreditCard, roles: ["manager"] },
+  { href: "/billing/admin", label: "Billing (Admin)", icon: CreditCard, roles: ["admin"] },
 ];
 
 function NavLinks({ onNav }: { onNav?: () => void }) {
   const path = usePathname();
+  const { role } = useAuth();
+  const visible = nav.filter(item => !item.roles || (role != null && item.roles.includes(role)));
   return (
     <nav className="flex-1 px-4 py-6 space-y-0.5">
-      {nav.map(({ href, label, icon: Icon }) => (
+      {visible.map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} onClick={onNav}
           className={clsx(
             "flex items-center gap-3 px-3 py-2.5 text-sm transition-colors rounded",

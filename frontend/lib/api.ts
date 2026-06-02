@@ -127,6 +127,18 @@ export const api = {
       req<Conversation>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
     delete: (id: string) => req(`/api/conversations/${id}`, { method: "DELETE" }),
   },
+  billing: {
+    me: () => req<MyBilling>(`/api/billing/me`),
+    listManagers: () => req<BillableManager[]>(`/api/billing/admin/managers`),
+    getManager: (agentId: string) => req<ManagerBillingConfig>(`/api/billing/admin/${agentId}`),
+    configure: (agentId: string, body: BillingConfigInput) =>
+      req<{ ok: boolean }>(`/api/billing/admin/${agentId}`, { method: "PUT", body: JSON.stringify(body) }),
+    // Phase 2 (Stripe):
+    checkoutSingle: (invoiceId: string) =>
+      req<{ url: string }>(`/api/billing/checkout/single`, { method: "POST", body: JSON.stringify({ invoice_id: invoiceId }) }),
+    checkoutRecurring: () =>
+      req<{ url: string }>(`/api/billing/checkout/recurring`, { method: "POST" }),
+  },
 };
 
 export interface Call {
@@ -209,6 +221,70 @@ export interface Consent {
   consent_text: string;
   sent_to_email?: string;
   created_at: string;
+}
+
+// ─── Billing ─────────────────────────────────────────────────────────────────
+
+export interface BillingCategorySingle {
+  invoice_id: string | null;
+  amount: number | null;       // dollars; null = not configured by admin
+  currency: string;
+  description: string | null;
+  due_date: string | null;
+  status: string | null;
+  configured: boolean;
+}
+
+export interface BillingCategoryRecurring {
+  amount: number | null;       // dollars/month; null = not configured
+  currency: string;
+  description: string | null;
+  status: string;              // inactive | pending | active | past_due | canceled
+  current_period_end: string | null;
+  configured: boolean;
+}
+
+export interface UpcomingPayment {
+  type: "single" | "recurring";
+  amount: number | null;
+  currency: string;
+  due_date: string | null;
+  description: string | null;
+}
+
+export interface PaidInvoice {
+  id: string;
+  type: "single" | "recurring";
+  description: string | null;
+  amount: number | null;
+  currency: string;
+  paid_at: string | null;
+}
+
+export interface MyBilling {
+  single: BillingCategorySingle;
+  recurring: BillingCategoryRecurring;
+  upcoming: UpcomingPayment | null;
+  history: PaidInvoice[];
+}
+
+export interface BillableManager {
+  agent_id: string;
+  name: string | null;
+  email: string | null;
+  recurring_amount: number | null;
+  recurring_status: string;
+}
+
+export interface ManagerBillingConfig {
+  agent_id: string;
+  single: { amount: number | null; description: string | null; due_date: string | null };
+  recurring: { amount: number | null; description: string | null; status: string };
+}
+
+export interface BillingConfigInput {
+  single?: { amount: number | null; description?: string | null; due_date?: string | null };
+  recurring?: { amount: number | null; description?: string | null };
 }
 
 export interface Lead {
