@@ -61,13 +61,32 @@ async def get_jwt_agent_id(
             db.table("agents").update({"auth_user_id": auth_user_id}).eq("id", agent_id).execute()
             return agent_id
 
-    # 3. Auto-create a minimal profile so the user is never stuck
+    # 3. Auto-create a minimal profile so the user is never stuck.
+    #    Look up the Chardin portal profiles table to get the correct role:
+    #      profiles.role = 'admin'    → agents.role = 'admin'
+    #      profiles.role = 'client'   → agents.role = 'manager'
+    #      profiles.role = 'employee' → agents.role = 'employee'
+    _ROLE_MAP = {"admin": "admin", "client": "manager", "employee": "employee"}
+    chardin_role = "employee"
+    try:
+        profile_res = (db.table("profiles")
+                       .select("role")
+                       .eq("id", auth_user_id)
+                       .maybe_single()
+                       .execute())
+        if profile_res and profile_res.data:
+            chardin_role = profile_res.data.get("role", "employee")
+    except Exception:
+        pass
+    agent_role = _ROLE_MAP.get(chardin_role, "employee")
+
     name = email.split("@")[0].replace(".", " ").title() if email else "New Agent"
     new_agent = db.table("agents").insert({
         "brokerage_id": _DEMO_BROKERAGE_ID,
         "name": name,
         "email": email,
         "auth_user_id": auth_user_id,
+        "role": agent_role,
     }).execute()
     if new_agent.data:
         return new_agent.data[0]["id"]
