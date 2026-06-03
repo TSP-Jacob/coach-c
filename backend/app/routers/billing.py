@@ -1,19 +1,21 @@
 """
-Billing router — invoices, recurring plans, and (Phase 2) Stripe payments.
+Billing router — invoices, recurring plans, and Stripe payments.
 
 Roles (agents.role):
   - admin   : configures invoice amounts / recurring plans for managers
   - manager : views their own billing, pays invoices, subscribes
   - employee: no billing access
-
-Phase 1 (this file): schema-backed read paths + admin configuration.
-Phase 2 (added once Stripe keys exist): checkout sessions + webhook.
 """
 from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+import stripe
+from app.config import settings
 from app.database import get_supabase
 from app.middleware.auth import get_jwt_agent_id
+
+# Initialise Stripe — no-ops gracefully if key not set
+stripe.api_key = settings.stripe_secret_key
 
 router = APIRouter()
 
@@ -272,3 +274,231 @@ def configure_manager_billing(agent_id: str, body: BillingConfig, admin: dict = 
             result["recurring_plan_id"] = row["id"]
 
     return {"ok": True, **result}
+
+
+# ─── Stripe helpers ───────────────────────────────────────────────────────────
+
+def _get_or_create_stripe_customer(db, agent: dict) -> str:
+    """Return the Stripe customer id for an agent, creating one if needed."""
+    existing = (db.table("billing_customers")
+                .select("stripe_customer_id")
+                .eq("agent_id", agent["id"])
+                .maybe_single().execute())
+    if existing and existing.data:
+        return existing.data["stripe_customer_id"]
+
+    customer = stripe.Customer.create(
+        email=agent.get("email"),
+        name=agent.get("name"),
+        metadata={"agent_id": agent["id"]},
+    )
+    db.table("billing_customers").insert({
+        "agent_id": agent["id"],
+        "stripe_customer_id": customer.id,
+    }).execute()
+    return customer.id
+
+
+# ─── Manager checkout — single payment ───────────────────────────────────────
+
+class CheckoutSingleRequest(BaseModel):
+    invoice_id: str
+
+
+@router.post("/checkout/single")
+def checkout_single(body: CheckoutSingleRequest, agent: dict = Depends(require_billing_viewer)):
+    """Return a Stripe Checkout URL for a one-time invoice payment."""
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Payment processing not configured")
+
+    db = get_supabase()
+    inv_res = (db.table("invoices").select("*")
+               .eq("id", body.invoice_id)
+               .eq("agent_id", agent["id"])
+               .single().execute())
+    if not inv_res.data:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    inv = inv_res.data
+    if not inv.get("amount_cents"):
+        raise HTTPException(status_code=400, detail="Invoice amount not set")
+
+    customer_id = _get_or_create_stripe_customer(db, agent)
+    frontend = settings.frontend_url
+
+    session = stripe.checkout.Session.create(
+        customer=customer_id,
+        payment_method_types=["card"],
+        mode="payment",
+        line_items=[{
+            "price_data": {
+                "currency": inv.get("currency", "cad"),
+                "unit_amount": inv["amount_cents"],
+                "product_data": {"name": inv.get("description") or "Single Payment"},
+            },
+            "quantity": 1,
+        }],
+        success_url=f"{frontend}/billing?payment=success",
+        cancel_url=f"{frontend}/billing?payment=canceled",
+        metadata={"invoice_id": inv["id"], "agent_id": agent["id"]},
+    )
+
+    db.table("invoices").update({
+        "stripe_checkout_session_id": session.id,
+        "status": "pending",
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", inv["id"]).execute()
+
+    return {"url": session.url}
+
+
+# ─── Manager checkout — recurring subscription ───────────────────────────────
+
+@router.post("/checkout/recurring")
+def checkout_recurring(agent: dict = Depends(require_billing_viewer)):
+    """Return a Stripe Checkout URL to start a monthly subscription."""
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Payment processing not configured")
+
+    db = get_supabase()
+    plan_res = (db.table("recurring_plans").select("*")
+                .eq("agent_id", agent["id"])
+                .maybe_single().execute())
+    if not plan_res or not plan_res.data or not plan_res.data.get("amount_cents"):
+        raise HTTPException(status_code=400, detail="Recurring plan not configured by admin")
+    plan = plan_res.data
+
+    if plan.get("status") == "active":
+        raise HTTPException(status_code=400, detail="Subscription already active")
+
+    customer_id = _get_or_create_stripe_customer(db, agent)
+    frontend = settings.frontend_url
+
+    # Create a Stripe price on-the-fly (monthly)
+    price = stripe.Price.create(
+        unit_amount=plan["amount_cents"],
+        currency=plan.get("currency", "cad"),
+        recurring={"interval": "month"},
+        product_data={"name": plan.get("description") or "Monthly Subscription"},
+    )
+
+    session = stripe.checkout.Session.create(
+        customer=customer_id,
+        payment_method_types=["card"],
+        mode="subscription",
+        line_items=[{"price": price.id, "quantity": 1}],
+        success_url=f"{frontend}/billing?subscription=success",
+        cancel_url=f"{frontend}/billing?subscription=canceled",
+        metadata={"agent_id": agent["id"], "plan_id": plan["id"]},
+    )
+
+    db.table("recurring_plans").update({
+        "status": "pending",
+        "stripe_price_id": price.id,
+        "updated_at": datetime.utcnow().isoformat(),
+    }).eq("id", plan["id"]).execute()
+
+    return {"url": session.url}
+
+
+# ─── Stripe webhook ───────────────────────────────────────────────────────────
+
+@router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """
+    Receives Stripe events and updates invoice / plan status accordingly.
+    Handles:
+      checkout.session.completed — marks single invoice paid OR activates subscription
+      invoice.paid               — records each recurring renewal in history
+      invoice.payment_failed     — marks plan as past_due
+    """
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+
+    if settings.stripe_webhook_secret:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig, settings.stripe_webhook_secret)
+        except stripe.error.SignatureVerificationError:
+            raise HTTPException(status_code=400, detail="Invalid Stripe signature")
+    else:
+        import json
+        event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+
+    db = get_supabase()
+
+    if event.type == "checkout.session.completed":
+        sess = event.data.object
+        invoice_id = (sess.metadata or {}).get("invoice_id")
+        plan_id    = (sess.metadata or {}).get("plan_id")
+        agent_id   = (sess.metadata or {}).get("agent_id")
+
+        if invoice_id:
+            # One-time payment paid
+            db.table("invoices").update({
+                "status": "paid",
+                "paid_at": datetime.utcnow().isoformat(),
+                "stripe_payment_intent_id": sess.payment_intent,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("id", invoice_id).execute()
+
+        if plan_id and sess.subscription:
+            # Subscription created — activate plan and insert first history row
+            sub = stripe.Subscription.retrieve(sess.subscription)
+            period_end = datetime.fromtimestamp(sub.current_period_end).isoformat()
+            db.table("recurring_plans").update({
+                "status": "active",
+                "stripe_subscription_id": sess.subscription,
+                "current_period_end": period_end,
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("id", plan_id).execute()
+
+            if agent_id:
+                plan = db.table("recurring_plans").select("amount_cents,currency,description").eq("id", plan_id).single().execute()
+                if plan.data:
+                    db.table("invoices").insert({
+                        "agent_id": agent_id,
+                        "type": "recurring",
+                        "status": "paid",
+                        "amount_cents": plan.data.get("amount_cents"),
+                        "currency": plan.data.get("currency", "cad"),
+                        "description": plan.data.get("description"),
+                        "stripe_subscription_id": sess.subscription,
+                        "paid_at": datetime.utcnow().isoformat(),
+                    }).execute()
+
+    elif event.type == "invoice.paid":
+        # Recurring renewal
+        stripe_inv = event.data.object
+        sub_id = stripe_inv.subscription
+        if sub_id:
+            plan = (db.table("recurring_plans").select("*")
+                    .eq("stripe_subscription_id", sub_id)
+                    .maybe_single().execute())
+            if plan and plan.data:
+                sub = stripe.Subscription.retrieve(sub_id)
+                db.table("recurring_plans").update({
+                    "status": "active",
+                    "current_period_end": datetime.fromtimestamp(sub.current_period_end).isoformat(),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).eq("id", plan.data["id"]).execute()
+
+                db.table("invoices").insert({
+                    "agent_id": plan.data["agent_id"],
+                    "type": "recurring",
+                    "status": "paid",
+                    "amount_cents": plan.data.get("amount_cents"),
+                    "currency": plan.data.get("currency", "cad"),
+                    "description": plan.data.get("description"),
+                    "stripe_invoice_id": stripe_inv.id,
+                    "stripe_subscription_id": sub_id,
+                    "paid_at": datetime.utcnow().isoformat(),
+                }).execute()
+
+    elif event.type == "invoice.payment_failed":
+        sub_id = event.data.object.subscription
+        if sub_id:
+            db.table("recurring_plans").update({
+                "status": "past_due",
+                "updated_at": datetime.utcnow().isoformat(),
+            }).eq("stripe_subscription_id", sub_id).execute()
+
+    return {"received": True}
