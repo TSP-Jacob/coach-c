@@ -402,6 +402,25 @@ def checkout_recurring(agent: dict = Depends(require_billing_viewer)):
 
 # ─── Stripe webhook ───────────────────────────────────────────────────────────
 
+def _period_end_iso(sub) -> str | None:
+    """
+    Return the subscription's current period end as ISO, handling both old and
+    new Stripe API shapes. In API 2025-03+ `current_period_end` moved off the
+    Subscription onto each subscription item.
+    """
+    ts = None
+    try:
+        ts = sub.get("current_period_end")
+    except Exception:
+        ts = getattr(sub, "current_period_end", None)
+    if not ts:
+        try:
+            ts = sub["items"]["data"][0]["current_period_end"]
+        except Exception:
+            ts = None
+    return datetime.fromtimestamp(ts).isoformat() if ts else None
+
+
 @router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     """
@@ -414,91 +433,103 @@ async def stripe_webhook(request: Request):
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
 
-    if settings.stripe_webhook_secret:
-        try:
+    # Parse + verify the event (robust across stripe-python versions)
+    try:
+        if settings.stripe_webhook_secret:
             event = stripe.Webhook.construct_event(payload, sig, settings.stripe_webhook_secret)
-        except stripe.error.SignatureVerificationError:
-            raise HTTPException(status_code=400, detail="Invalid Stripe signature")
-    else:
-        import json
-        event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+        else:
+            import json
+            event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
+    except Exception as e:
+        print(f"[stripe_webhook] signature/parse error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid webhook payload or signature")
 
     db = get_supabase()
 
-    if event.type == "checkout.session.completed":
-        sess = event.data.object
-        invoice_id = (sess.metadata or {}).get("invoice_id")
-        plan_id    = (sess.metadata or {}).get("plan_id")
-        agent_id   = (sess.metadata or {}).get("agent_id")
+    # Process the event. Any error is logged with a full traceback; we still
+    # return 200 so Stripe doesn't retry-storm while we iterate.
+    try:
+        etype = event["type"]
+        obj   = event["data"]["object"]
 
-        if invoice_id:
-            # One-time payment paid
-            db.table("invoices").update({
-                "status": "paid",
-                "paid_at": datetime.utcnow().isoformat(),
-                "stripe_payment_intent_id": sess.payment_intent,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("id", invoice_id).execute()
+        if etype == "checkout.session.completed":
+            metadata        = obj.get("metadata") or {}
+            invoice_id      = metadata.get("invoice_id")
+            plan_id         = metadata.get("plan_id")
+            agent_id        = metadata.get("agent_id")
+            subscription_id = obj.get("subscription")
 
-        if plan_id and sess.subscription:
-            # Subscription created — activate plan and insert first history row
-            sub = stripe.Subscription.retrieve(sess.subscription)
-            period_end = datetime.fromtimestamp(sub.current_period_end).isoformat()
-            db.table("recurring_plans").update({
-                "status": "active",
-                "stripe_subscription_id": sess.subscription,
-                "current_period_end": period_end,
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("id", plan_id).execute()
+            if invoice_id:
+                db.table("invoices").update({
+                    "status": "paid",
+                    "paid_at": datetime.utcnow().isoformat(),
+                    "stripe_payment_intent_id": obj.get("payment_intent"),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).eq("id", invoice_id).execute()
+                print(f"[stripe_webhook] marked invoice {invoice_id} paid")
 
-            if agent_id:
-                plan = db.table("recurring_plans").select("amount_cents,currency,description").eq("id", plan_id).single().execute()
-                if plan.data:
+            if plan_id and subscription_id:
+                sub = stripe.Subscription.retrieve(subscription_id)
+                db.table("recurring_plans").update({
+                    "status": "active",
+                    "stripe_subscription_id": subscription_id,
+                    "current_period_end": _period_end_iso(sub),
+                    "updated_at": datetime.utcnow().isoformat(),
+                }).eq("id", plan_id).execute()
+
+                if agent_id:
+                    plan = db.table("recurring_plans").select("amount_cents,currency,description").eq("id", plan_id).single().execute()
+                    if plan.data:
+                        db.table("invoices").insert({
+                            "agent_id": agent_id,
+                            "type": "recurring",
+                            "status": "paid",
+                            "amount_cents": plan.data.get("amount_cents"),
+                            "currency": plan.data.get("currency", "cad"),
+                            "description": plan.data.get("description"),
+                            "stripe_subscription_id": subscription_id,
+                            "paid_at": datetime.utcnow().isoformat(),
+                        }).execute()
+                print(f"[stripe_webhook] activated subscription for plan {plan_id}")
+
+        elif etype == "invoice.paid":
+            sub_id = obj.get("subscription")
+            if sub_id:
+                plan = (db.table("recurring_plans").select("*")
+                        .eq("stripe_subscription_id", sub_id)
+                        .maybe_single().execute())
+                if plan and plan.data:
+                    sub = stripe.Subscription.retrieve(sub_id)
+                    db.table("recurring_plans").update({
+                        "status": "active",
+                        "current_period_end": _period_end_iso(sub),
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }).eq("id", plan.data["id"]).execute()
+
                     db.table("invoices").insert({
-                        "agent_id": agent_id,
+                        "agent_id": plan.data["agent_id"],
                         "type": "recurring",
                         "status": "paid",
                         "amount_cents": plan.data.get("amount_cents"),
                         "currency": plan.data.get("currency", "cad"),
                         "description": plan.data.get("description"),
-                        "stripe_subscription_id": sess.subscription,
+                        "stripe_invoice_id": obj.get("id"),
+                        "stripe_subscription_id": sub_id,
                         "paid_at": datetime.utcnow().isoformat(),
                     }).execute()
 
-    elif event.type == "invoice.paid":
-        # Recurring renewal
-        stripe_inv = event.data.object
-        sub_id = stripe_inv.subscription
-        if sub_id:
-            plan = (db.table("recurring_plans").select("*")
-                    .eq("stripe_subscription_id", sub_id)
-                    .maybe_single().execute())
-            if plan and plan.data:
-                sub = stripe.Subscription.retrieve(sub_id)
+        elif etype == "invoice.payment_failed":
+            sub_id = obj.get("subscription")
+            if sub_id:
                 db.table("recurring_plans").update({
-                    "status": "active",
-                    "current_period_end": datetime.fromtimestamp(sub.current_period_end).isoformat(),
+                    "status": "past_due",
                     "updated_at": datetime.utcnow().isoformat(),
-                }).eq("id", plan.data["id"]).execute()
+                }).eq("stripe_subscription_id", sub_id).execute()
 
-                db.table("invoices").insert({
-                    "agent_id": plan.data["agent_id"],
-                    "type": "recurring",
-                    "status": "paid",
-                    "amount_cents": plan.data.get("amount_cents"),
-                    "currency": plan.data.get("currency", "cad"),
-                    "description": plan.data.get("description"),
-                    "stripe_invoice_id": stripe_inv.id,
-                    "stripe_subscription_id": sub_id,
-                    "paid_at": datetime.utcnow().isoformat(),
-                }).execute()
-
-    elif event.type == "invoice.payment_failed":
-        sub_id = event.data.object.subscription
-        if sub_id:
-            db.table("recurring_plans").update({
-                "status": "past_due",
-                "updated_at": datetime.utcnow().isoformat(),
-            }).eq("stripe_subscription_id", sub_id).execute()
+    except Exception as e:
+        import traceback
+        print(f"[stripe_webhook] processing error for {event.get('type')}: {e}")
+        traceback.print_exc()
+        return {"received": True, "error": str(e)}
 
     return {"received": True}
