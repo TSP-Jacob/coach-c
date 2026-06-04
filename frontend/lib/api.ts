@@ -68,6 +68,10 @@ export const api = {
     list: () => req<Agent[]>(`/api/agents/`),
     get: (id: string) => req<Agent>(`/api/agents/${id}`),
     stats: (id: string) => req<AgentStats>(`/api/agents/${id}/stats`),
+    // Admin team management
+    listAll: () => req<AdminAgent[]>(`/api/agents/all`),
+    updateRole: (id: string, role: string) =>
+      req<{ ok: boolean; role: string }>(`/api/agents/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
     getClient: (clientId: string) => req<Client>(`/api/agents/clients/${clientId}`),
     listClients: (agentId: string) => req<Client[]>(`/api/agents/${agentId}/clients`),
     createClient: (body: Partial<Client>) =>
@@ -162,6 +166,13 @@ export interface CoachingReport {
 export interface Agent {
   id: string; name: string; email: string; brokerage_id: string;
   brokerages?: { name: string };
+}
+
+export interface AdminAgent {
+  id: string; name: string; email: string;
+  role: "admin" | "manager" | "employee";
+  brokerage_id: string;
+  brokerages?: { name: string } | null;
 }
 
 export interface AgentStats {

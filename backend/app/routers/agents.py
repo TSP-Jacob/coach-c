@@ -116,6 +116,48 @@ def get_my_agent(jwt_agent_id: str = Depends(get_jwt_agent_id)):
     return result.data
 
 
+# ─── Admin: team management ───────────────────────────────────────────────────
+
+def _require_admin(agent_id: str | None) -> dict:
+    if not agent_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_supabase()
+    res = db.table("agents").select("id, role").eq("id", agent_id).single().execute()
+    if not res.data or res.data.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return res.data
+
+
+class RoleUpdate(BaseModel):
+    role: str
+
+
+@router.get("/all")
+def list_all_agents(jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """Admin-only: every agent with role + organization, for team management."""
+    _require_admin(jwt_agent_id)
+    db = get_supabase()
+    return (db.table("agents")
+            .select("id, name, email, role, brokerage_id, brokerages(name)")
+            .order("role")
+            .order("name")
+            .execute().data)
+
+
+@router.patch("/{agent_id}/role")
+def update_agent_role(agent_id: str, body: RoleUpdate,
+                      jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """Admin-only: change an agent's role (admin | manager | employee)."""
+    admin = _require_admin(jwt_agent_id)
+    if body.role not in ("admin", "manager", "employee"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if agent_id == admin["id"] and body.role != "admin":
+        raise HTTPException(status_code=400, detail="You cannot remove your own admin role")
+    db = get_supabase()
+    db.table("agents").update({"role": body.role}).eq("id", agent_id).execute()
+    return {"ok": True, "agent_id": agent_id, "role": body.role}
+
+
 @router.get("/{agent_id}")
 def get_agent(agent_id: str):
     db = get_supabase()
