@@ -322,6 +322,36 @@ def _get_or_create_stripe_customer(db, agent: dict) -> str:
     return customer_id
 
 
+@router.post("/admin/sync-customers")
+def sync_customers(admin: dict = Depends(require_admin)):
+    """
+    Admin: ensure every manager has a Stripe customer so they all appear in the
+    Stripe Dashboard, ready to invoice. Idempotent — reuses existing customers
+    (matched by our mapping or email) and never creates duplicates.
+    """
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Payment processing not configured")
+
+    db = get_supabase()
+    managers = db.table("agents").select("id, name, email").eq("role", "manager").execute().data or []
+
+    results = []
+    for m in managers:
+        try:
+            cid = _get_or_create_stripe_customer(db, m)
+            results.append({"name": m.get("name"), "email": m.get("email"),
+                            "stripe_customer_id": cid, "ok": True})
+        except Exception as e:
+            results.append({"name": m.get("name"), "email": m.get("email"),
+                            "ok": False, "error": str(e)})
+
+    return {
+        "synced": sum(1 for r in results if r["ok"]),
+        "total": len(results),
+        "results": results,
+    }
+
+
 @router.post("/portal")
 def billing_portal(agent: dict = Depends(require_billing_viewer)):
     """

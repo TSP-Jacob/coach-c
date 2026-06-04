@@ -138,6 +138,9 @@ export const api = {
     portal: () => req<{ url: string }>(`/api/billing/portal`, { method: "POST" }),
     // Admin reference list of managers (to know who to invoice in Stripe)
     listManagers: () => req<BillableManager[]>(`/api/billing/admin/managers`),
+    // Admin: pre-create Stripe customers for all managers (idempotent)
+    syncCustomers: () =>
+      req<{ synced: number; total: number }>(`/api/billing/admin/sync-customers`, { method: "POST" }),
   },
 };
 

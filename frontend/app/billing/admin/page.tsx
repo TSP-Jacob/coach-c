@@ -11,6 +11,8 @@ export default function BillingAdminPage() {
   const [managers, setManagers] = useState<BillableManager[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -19,6 +21,20 @@ export default function BillingAdminPage() {
       .catch(e => setError(String(e.message || e)))
       .finally(() => setLoading(false));
   }, [authLoading]);
+
+  const syncCustomers = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    setError(null);
+    try {
+      const { synced, total } = await api.billing.syncCustomers();
+      setSyncMsg(`Synced ${synced} of ${total} managers to Stripe. They're now ready to invoice in the Dashboard.`);
+    } catch (e: any) {
+      setError(String(e.message || e));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   if (!authLoading && role && role !== "admin") {
     return <p className="text-sm text-gray-400">Admin access required.</p>;
@@ -51,10 +67,20 @@ export default function BillingAdminPage() {
         </div>
       </div>
 
-      <a href={STRIPE_DASHBOARD} target="_blank" rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 bg-brand text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-brand-dark transition-colors">
-        Open Stripe Dashboard <ExternalLink size={15} />
-      </a>
+      <div className="flex flex-wrap items-center gap-3">
+        <a href={STRIPE_DASHBOARD} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 bg-brand text-white text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-brand-dark transition-colors">
+          Open Stripe Dashboard <ExternalLink size={15} />
+        </a>
+        <button onClick={syncCustomers} disabled={syncing}
+          className="inline-flex items-center gap-2 border border-gray-300 text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors">
+          {syncing ? "Syncing…" : "Sync managers to Stripe"}
+        </button>
+      </div>
+
+      {syncMsg && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3">{syncMsg}</div>
+      )}
 
       {/* Manager reference list */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
