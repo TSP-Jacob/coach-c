@@ -158,6 +158,39 @@ def update_agent_role(agent_id: str, body: RoleUpdate,
     return {"ok": True, "agent_id": agent_id, "role": body.role}
 
 
+@router.get("/team")
+def list_team(jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """
+    Everyone in the caller's organization (brokerage) with per-agent call stats.
+    Powers the Agents performance view for managers and admins.
+    """
+    if not jwt_agent_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_supabase()
+    me = db.table("agents").select("brokerage_id").eq("id", jwt_agent_id).single().execute()
+    if not me.data:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    brokerage_id = me.data["brokerage_id"]
+
+    team = (db.table("agents")
+            .select("id, name, email, role")
+            .eq("brokerage_id", brokerage_id)
+            .order("name")
+            .execute().data)
+
+    out = []
+    for a in team:
+        calls = (db.table("calls").select("overall_score")
+                 .eq("agent_id", a["id"]).eq("status", "complete").execute().data)
+        scores = [c["overall_score"] for c in calls if c.get("overall_score") is not None]
+        out.append({
+            **a,
+            "total_calls": len(calls),
+            "average_score": round(sum(scores) / len(scores)) if scores else None,
+        })
+    return out
+
+
 @router.get("/{agent_id}")
 def get_agent(agent_id: str):
     db = get_supabase()

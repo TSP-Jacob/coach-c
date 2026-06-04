@@ -68,6 +68,8 @@ export const api = {
     list: () => req<Agent[]>(`/api/agents/`),
     get: (id: string) => req<Agent>(`/api/agents/${id}`),
     stats: (id: string) => req<AgentStats>(`/api/agents/${id}/stats`),
+    // Organization-wide performance overview (managers + admins)
+    team: () => req<TeamMember[]>(`/api/agents/team`),
     // Admin team management
     listAll: () => req<AdminAgent[]>(`/api/agents/all`),
     updateRole: (id: string, role: string) =>
@@ -173,6 +175,13 @@ export interface AdminAgent {
   role: "admin" | "manager" | "employee";
   brokerage_id: string;
   brokerages?: { name: string } | null;
+}
+
+export interface TeamMember {
+  id: string; name: string; email: string;
+  role: "admin" | "manager" | "employee";
+  total_calls: number;
+  average_score: number | null;
 }
 
 export interface AgentStats {
