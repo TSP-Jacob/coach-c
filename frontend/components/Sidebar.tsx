@@ -49,7 +49,7 @@ function NavLinks({ onNav }: { onNav?: () => void }) {
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
-  const { signOut, session } = useAuth();
+  const { signOut, session, agentId } = useAuth();
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -67,7 +67,7 @@ export default function Sidebar() {
         </div>
         <NavLinks />
         <div className="px-6 py-4 border-t border-warm-border space-y-2">
-          {!SKIP_AUTH && session && (
+          {!SKIP_AUTH && (session || agentId) && (
             <button
               onClick={handleSignOut}
               className="flex items-center gap-2 text-xs text-muted hover:text-brand transition-colors w-full"

@@ -89,7 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, agentId, role, loading,
-      signOut: async () => { await supabase.auth.signOut(); },
+      signOut: async () => {
+      // Clear SSO token if present (used when arriving from Chardin portal)
+      if (typeof window !== "undefined") sessionStorage.removeItem("ext_token");
+      await supabase.auth.signOut();
+    },
     }}>
       {children}
     </AuthContext.Provider>
