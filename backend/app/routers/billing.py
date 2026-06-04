@@ -279,7 +279,14 @@ def configure_manager_billing(agent_id: str, body: BillingConfig, admin: dict = 
 # ─── Stripe helpers ───────────────────────────────────────────────────────────
 
 def _get_or_create_stripe_customer(db, agent: dict) -> str:
-    """Return the Stripe customer id for an agent, creating one if needed."""
+    """
+    Return the Stripe customer id for an agent.
+    Resolution order so we never create duplicates:
+      1. our billing_customers mapping
+      2. an existing Stripe customer with the same email (e.g. one you created
+         in the Stripe Dashboard when issuing an invoice)
+      3. create a new customer
+    """
     existing = (db.table("billing_customers")
                 .select("stripe_customer_id")
                 .eq("agent_id", agent["id"])
@@ -287,16 +294,58 @@ def _get_or_create_stripe_customer(db, agent: dict) -> str:
     if existing and existing.data:
         return existing.data["stripe_customer_id"]
 
-    customer = stripe.Customer.create(
-        email=agent.get("email"),
-        name=agent.get("name"),
-        metadata={"agent_id": agent["id"]},
-    )
+    customer_id = None
+    email = (agent.get("email") or "").strip()
+
+    # 2. Reuse an existing Stripe customer with this email
+    if email:
+        try:
+            found = stripe.Customer.list(email=email, limit=1)
+            if found and found.data:
+                customer_id = found.data[0].id
+        except Exception:
+            pass
+
+    # 3. Otherwise create one
+    if not customer_id:
+        customer = stripe.Customer.create(
+            email=email or None,
+            name=agent.get("name"),
+            metadata={"agent_id": agent["id"]},
+        )
+        customer_id = customer.id
+
     db.table("billing_customers").insert({
         "agent_id": agent["id"],
-        "stripe_customer_id": customer.id,
+        "stripe_customer_id": customer_id,
     }).execute()
-    return customer.id
+    return customer_id
+
+
+@router.post("/portal")
+def billing_portal(agent: dict = Depends(require_billing_viewer)):
+    """
+    Create a Stripe Customer Portal session for the current manager and return
+    its URL. The portal is Stripe-hosted: the manager sees all their invoices,
+    pays, updates payment methods, and views history — no custom checkout.
+    """
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Payment processing not configured")
+
+    db = get_supabase()
+    customer_id = _get_or_create_stripe_customer(db, agent)
+
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=f"{settings.frontend_url}/billing",
+        )
+    except Exception as e:
+        # Most common cause: the Customer Portal hasn't been activated in the
+        # Stripe Dashboard (Settings → Billing → Customer portal).
+        raise HTTPException(status_code=503, detail=f"Could not open billing portal: {e}")
+
+    return {"url": session.url}
 
 
 # ─── Manager checkout — single payment ───────────────────────────────────────

@@ -128,16 +128,10 @@ export const api = {
     delete: (id: string) => req(`/api/conversations/${id}`, { method: "DELETE" }),
   },
   billing: {
-    me: () => req<MyBilling>(`/api/billing/me`),
+    // Stripe-hosted Customer Portal — manager sees invoices, pays, views history
+    portal: () => req<{ url: string }>(`/api/billing/portal`, { method: "POST" }),
+    // Admin reference list of managers (to know who to invoice in Stripe)
     listManagers: () => req<BillableManager[]>(`/api/billing/admin/managers`),
-    getManager: (agentId: string) => req<ManagerBillingConfig>(`/api/billing/admin/${agentId}`),
-    configure: (agentId: string, body: BillingConfigInput) =>
-      req<{ ok: boolean }>(`/api/billing/admin/${agentId}`, { method: "PUT", body: JSON.stringify(body) }),
-    // Phase 2 (Stripe):
-    checkoutSingle: (invoiceId: string) =>
-      req<{ url: string }>(`/api/billing/checkout/single`, { method: "POST", body: JSON.stringify({ invoice_id: invoiceId }) }),
-    checkoutRecurring: () =>
-      req<{ url: string }>(`/api/billing/checkout/recurring`, { method: "POST" }),
   },
 };
 
