@@ -99,7 +99,8 @@ function RespondPopover({ onSelect }: { onSelect: (method: string) => void }) {
 }
 
 export default function LeadsPage() {
-  const { agentId } = useAuth();
+  const { agentId, role } = useAuth();
+  const canManage = role === "admin" || role === "manager";
   const [leads, setLeads]   = useState<Lead[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sourceFilter, setSourceFilter] = useState("");
@@ -108,9 +109,11 @@ export default function LeadsPage() {
 
   useEffect(() => {
     if (!agentId) return;
-    api.leads.list(agentId, sourceFilter || undefined, statusFilter || undefined).then(setLeads);
-    api.agents.list().then(setAgents);
-  }, [agentId, sourceFilter, statusFilter]);
+    // Managers/admins: backend returns all org leads (agent_id param omitted)
+    // Employees: backend scopes to their assigned + unassigned
+    api.leads.list(canManage ? undefined : agentId, sourceFilter || undefined, statusFilter || undefined).then(setLeads);
+    if (canManage) api.agents.list().then(setAgents);
+  }, [agentId, role, sourceFilter, statusFilter]);
 
   function patchLead(id: string, updates: Partial<Lead>) {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
@@ -182,8 +185,12 @@ export default function LeadsPage() {
       {/* Table */}
       <div className="bg-white border border-warm-border">
         {/* Column headers */}
-        <div className="grid grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr] gap-4 px-6 py-3 border-b border-warm-border">
-          {["Lead", "Source", "Contact", "Assigned Agent", "Action"].map(h => (
+        <div className={`grid ${canManage ? "grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-4 px-6 py-3 border-b border-warm-border`}>
+          {[
+            "Lead", "Source", "Contact",
+            ...(canManage ? ["Assigned Agent"] : []),
+            "Action"
+          ].map(h => (
             <p key={h} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
           ))}
         </div>
@@ -203,7 +210,7 @@ export default function LeadsPage() {
 
             return (
               <div key={lead.id} className={isResponded ? "opacity-70" : ""}>
-                <div className="grid grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr] gap-4 px-6 py-5 hover:bg-cream transition-colors items-center">
+                <div className={`grid ${canManage ? "grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-4 px-6 py-5 hover:bg-cream transition-colors items-center`}>
 
                   {/* Name + date + expand */}
                   <div>
@@ -241,22 +248,24 @@ export default function LeadsPage() {
                     )}
                   </div>
 
-                  {/* Assign agent */}
-                  <div onClick={e => e.stopPropagation()}>
-                    <select
-                      value={lead.agent_id ?? ""}
-                      onChange={e => handleAssign(lead.id, e.target.value)}
-                      className="text-xs border border-warm-border bg-white px-2 py-1.5 w-full focus:outline-none focus:border-brand transition-colors"
-                    >
-                      <option value="">Unassigned</option>
-                      {agents.map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </select>
-                    {assignedAgent && (
-                      <p className="text-[10px] text-muted mt-1">{assignedAgent.email}</p>
-                    )}
-                  </div>
+                  {/* Assign agent — managers/admins only */}
+                  {canManage && (
+                    <div onClick={e => e.stopPropagation()}>
+                      <select
+                        value={lead.agent_id ?? ""}
+                        onChange={e => handleAssign(lead.id, e.target.value)}
+                        className="text-xs border border-warm-border bg-white px-2 py-1.5 w-full focus:outline-none focus:border-brand transition-colors"
+                      >
+                        <option value="">Unassigned</option>
+                        {agents.map(a => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                      {assignedAgent && (
+                        <p className="text-[10px] text-muted mt-1">{assignedAgent.email}</p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Action */}
                   <div className="flex flex-col gap-2 items-start" onClick={e => e.stopPropagation()}>

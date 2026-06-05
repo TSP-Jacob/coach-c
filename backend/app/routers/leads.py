@@ -34,21 +34,40 @@ class HomeValuePayload(BaseModel):
 
 @router.get("/")
 def list_leads(
-    source: str | None = Query(None),
-    status: str | None = Query(None),
-    agent_id: str | None = Query(None),
-    jwt_agent_id: str | None = Depends(get_jwt_agent_id),
+    source:           str | None = Query(None),
+    status:           str | None = Query(None),
+    agent_id:         str | None = Query(None),
+    jwt_agent_id:     str | None = Depends(get_jwt_agent_id),
 ):
-    effective_agent_id = jwt_agent_id or agent_id
-    if not effective_agent_id:
+    caller_id = jwt_agent_id
+    if not caller_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+
     db = get_supabase()
-    # Return leads assigned to this agent OR unassigned (agent_id IS NULL)
-    q = db.table("leads").select("*").or_(f"agent_id.eq.{effective_agent_id},agent_id.is.null")
+
+    # Resolve the caller's role — gracefully defaults to 'employee' if column absent
+    role = "employee"
+    try:
+        res = db.table("agents").select("role").eq("id", caller_id).single().execute()
+        role = (res.data or {}).get("role", "employee")
+    except Exception:
+        pass
+
+    q = db.table("leads").select("*")
+
+    if role in ("admin", "manager"):
+        # Managers and admins see every lead; optionally filter to one agent
+        if agent_id:
+            q = q.eq("agent_id", agent_id)
+    else:
+        # Employees see only leads assigned to them or still unassigned
+        q = q.or_(f"agent_id.eq.{caller_id},agent_id.is.null")
+
     if source:
         q = q.eq("source", source)
     if status:
         q = q.eq("status", status)
+
     return q.order("created_at", desc=True).execute().data
 
 

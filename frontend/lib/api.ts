@@ -53,6 +53,7 @@ export const api = {
     list: (agentId?: string) => req<Call[]>(`/api/calls/${agentId ? `?agent_id=${agentId}` : ""}`),
     get: (id: string) => req<Call>(`/api/calls/${id}`),
     delete: (id: string) => req(`/api/calls/${id}`, { method: "DELETE" }),
+    insights: () => req<CoachingInsights>(`/api/calls/insights/me`),
     upload: async (form: FormData) => {
       const auth = await authHeaders();
       const res = await fetch(`${BASE}/api/calls/upload`, {
@@ -185,6 +186,15 @@ export interface TeamMember {
   role: "admin" | "manager" | "employee";
   total_calls: number;
   average_score: number | null;
+}
+
+export interface CoachingInsights {
+  needs_review_count: number;
+  needs_review_ids: string[];
+  top_strength: string | null;
+  top_improvement: string | null;
+  recent_trend: "up" | "down" | "steady";
+  total_complete: number;
 }
 
 export interface AgentStats {

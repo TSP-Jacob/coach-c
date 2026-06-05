@@ -334,3 +334,62 @@ def delete_call(call_id: str):
     db = get_supabase()
     db.table("calls").delete().eq("id", call_id).execute()
     return {"deleted": True}
+
+
+@router.get("/insights/me")
+def my_coaching_insights(jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """
+    Personal coaching insights for the currently logged-in agent.
+    Used on the employee/agent dashboard to surface actionable feedback.
+    Returns:
+      - needs_review: calls scored below 70 not yet reviewed
+      - top_strength: most consistently praised principle across recent reports
+      - top_improvement: principle flagged most often for improvement
+      - recent_trend: direction of last-5-calls scores (up / down / steady)
+      - unread_reports: count of complete calls the agent hasn't opened yet
+    """
+    if not jwt_agent_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    db = get_supabase()
+    calls = (db.table("calls")
+             .select("id, overall_score, status, coaching_report, created_at")
+             .eq("agent_id", jwt_agent_id)
+             .eq("status", "complete")
+             .order("created_at", desc=True)
+             .limit(50)
+             .execute().data or [])
+
+    needs_review = [c["id"] for c in calls if (c.get("overall_score") or 100) < 70]
+
+    # Tally principle scores across reports
+    principle_scores: dict[str, list[int]] = {}
+    for c in calls:
+        report = c.get("coaching_report") or {}
+        for principle, data in (report.get("principle_scores") or {}).items():
+            principle_scores.setdefault(principle, []).append(data.get("score", 50))
+
+    top_strength   = None
+    top_improvement = None
+    if principle_scores:
+        avgs = {p: sum(v) / len(v) for p, v in principle_scores.items()}
+        top_strength    = max(avgs, key=avgs.get)
+        top_improvement = min(avgs, key=avgs.get)
+
+    # Recent trend from last 5 scored calls
+    recent_scores = [c["overall_score"] for c in calls[:5] if c.get("overall_score") is not None]
+    recent_trend = "steady"
+    if len(recent_scores) >= 3:
+        if recent_scores[0] > recent_scores[-1] + 3:
+            recent_trend = "up"
+        elif recent_scores[0] < recent_scores[-1] - 3:
+            recent_trend = "down"
+
+    return {
+        "needs_review_count": len(needs_review),
+        "needs_review_ids":   needs_review[:5],
+        "top_strength":       top_strength.replace("_", " ").title() if top_strength else None,
+        "top_improvement":    top_improvement.replace("_", " ").title() if top_improvement else None,
+        "recent_trend":       recent_trend,
+        "total_complete":     len(calls),
+    }
