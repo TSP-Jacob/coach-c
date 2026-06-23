@@ -39,11 +39,12 @@ export const api = {
       req(`/api/calendar/disconnect?agent_id=${agentId}`, { method: "DELETE" }),
   },
   leads: {
-    list: (agentId?: string, source?: string, status?: string) => {
+    list: (agentId?: string, source?: string, status?: string, brokerageId?: string) => {
       const p = new URLSearchParams();
-      if (agentId) p.set("agent_id", agentId);
-      if (source)  p.set("source", source);
-      if (status)  p.set("status", status);
+      if (agentId)     p.set("agent_id", agentId);
+      if (source)      p.set("source", source);
+      if (status)      p.set("status", status);
+      if (brokerageId) p.set("brokerage_id", brokerageId);
       return req<Lead[]>(`/api/leads/?${p}`);
     },
     update: (id: string, body: { status?: string; agent_id?: string; contact_method?: string }) =>
@@ -117,8 +118,16 @@ export const api = {
     update: (body: Partial<OrgProfile>) =>
       req<OrgProfile>(`/api/organization/`, { method: "PATCH", body: JSON.stringify(body) }),
     listAll: () => req<OrgProfile[]>(`/api/organization/all`),
+    create: (name: string) =>
+      req<OrgProfile>(`/api/organization/`, { method: "POST", body: JSON.stringify({ name }) }),
     updateById: (id: string, body: Partial<OrgProfile>) =>
       req<OrgProfile>(`/api/organization/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  },
+  phoneNumbers: {
+    list: () => req<PhoneNumber[]>(`/api/phone-numbers/`),
+    create: (body: { number: string; brokerage_id: string; label?: string; forward_to?: string }) =>
+      req<PhoneNumber>(`/api/phone-numbers/`, { method: "POST", body: JSON.stringify(body) }),
+    remove: (id: string) => req(`/api/phone-numbers/${id}`, { method: "DELETE" }),
   },
   consents: {
     list: (clientId: string) => req<Consent[]>(`/api/consents/?client_id=${clientId}`),
@@ -312,6 +321,20 @@ export interface ManagerBillingConfig {
 export interface BillingConfigInput {
   single?: { amount: number | null; description?: string | null; due_date?: string | null };
   recurring?: { amount: number | null; description?: string | null };
+}
+
+export interface PhoneNumber {
+  id: string;
+  number: string;
+  brokerage_id: string;
+  agent_id: string | null;
+  label: string | null;
+  provider: string;
+  forward_to: string | null;
+  active: boolean;
+  created_at: string;
+  brokerages?: { name: string } | null;
+  agents?: { name: string } | null;
 }
 
 export interface Lead {

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2, CreditCard, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2, CreditCard, ShieldCheck, PhoneCall } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/lib/auth";
 
@@ -22,6 +22,7 @@ const nav: NavItem[] = [
   { href: "/guidelines",   label: "Guidelines",   icon: BookOpen },
   // Admin-only team management
   { href: "/team",          label: "Team",            icon: ShieldCheck, roles: ["admin"] },
+  { href: "/phone-numbers", label: "Phone Numbers",   icon: PhoneCall,   roles: ["admin"] },
   // Billing — managers see their own; admins see the configuration view
   { href: "/billing",       label: "Billing",         icon: CreditCard, roles: ["manager"] },
   { href: "/billing/admin", label: "Billing (Admin)", icon: CreditCard, roles: ["admin"] },

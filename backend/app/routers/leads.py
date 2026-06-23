@@ -37,6 +37,7 @@ def list_leads(
     source:           str | None = Query(None),
     status:           str | None = Query(None),
     agent_id:         str | None = Query(None),
+    brokerage_id:     str | None = Query(None),
     jwt_agent_id:     str | None = Depends(get_jwt_agent_id),
 ):
     caller_id = jwt_agent_id
@@ -62,6 +63,10 @@ def list_leads(
     else:
         # Employees see only leads assigned to them or still unassigned
         q = q.or_(f"agent_id.eq.{caller_id},agent_id.is.null")
+
+    # Admins/managers may narrow to one organization
+    if brokerage_id and role in ("admin", "manager"):
+        q = q.eq("brokerage_id", brokerage_id)
 
     if source:
         q = q.eq("source", source)

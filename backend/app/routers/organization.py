@@ -20,6 +20,28 @@ class OrgProfileUpdate(BaseModel):
     email: str | None = None
 
 
+class OrgCreate(BaseModel):
+    name: str
+
+
+@router.post("/")
+def create_org(body: OrgCreate, agent_id: str = Depends(get_jwt_agent_id)):
+    """Admin only — create a new organization (brokerage)."""
+    if not agent_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    db = get_supabase()
+    me = db.table("agents").select("role").eq("id", agent_id).single().execute()
+    if not me.data or me.data.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required")
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Organization name is required")
+    row = db.table("brokerages").insert({"name": name}).execute().data
+    if not row:
+        raise HTTPException(status_code=500, detail="Could not create organization")
+    return row[0]
+
+
 def _get_agent_with_brokerage(agent_id: str):
     db = get_supabase()
     result = (

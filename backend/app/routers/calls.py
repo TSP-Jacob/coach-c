@@ -3,12 +3,15 @@ import re
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Query, Request
+from fastapi.responses import Response
 import httpx
 from app.database import get_supabase
+from app.config import settings
 from app.services.transcription import TranscriptionService
 from app.services.coaching import CoachingService
 from app.services.rag import retrieve_context, index_client_notes
 from app.middleware.auth import get_jwt_agent_id
+from app.routers.phone_numbers import normalize_number
 
 router = APIRouter()
 
@@ -44,6 +47,7 @@ def _resolve_client(
     coaching_svc: CoachingService,
     full_text: str,
     phone_hint: str | None,
+    brokerage_id: str | None = None,
 ) -> tuple[str | None, bool, str | None]:
     """Return (client_id, is_new_client, name) — matching existing or creating a new profile."""
     clients = db.table("clients").select("id, name, phone, email").eq("agent_id", agent_id).execute().data
@@ -72,6 +76,7 @@ def _resolve_client(
         "name": name,
         "phone": phone,
         "type": "buyer",
+        **({"brokerage_id": brokerage_id} if brokerage_id else {}),
     }).execute().data[0]
     return new_client["id"], True, name
 
@@ -80,7 +85,7 @@ def _get_services():
     return TranscriptionService(), CoachingService()
 
 
-def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | None, phone_hint: str | None, file_modified_at: str | None = None):
+def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | None, phone_hint: str | None, file_modified_at: str | None = None, brokerage_id: str | None = None):
     transcription_svc, coaching_svc = _get_services()
     db = get_supabase()
     try:
@@ -114,7 +119,7 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
         # Resolve client if not manually provided
         if not client_id:
             try:
-                client_id, is_new_lead, lead_name = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint)
+                client_id, is_new_lead, lead_name = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint, brokerage_id)
                 if client_id:
                     db.table("calls").update({"client_id": client_id}).eq("id", call_id).execute()
                 if is_new_lead and client_id:
@@ -125,6 +130,7 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
                         "source": "call",
                         "status": "new",
                         "call_id": call_id,
+                        **({"brokerage_id": brokerage_id} if brokerage_id else {}),
                     }).execute()
             except Exception as resolve_err:
                 print(f"[calls] client resolution failed (non-fatal): {resolve_err}")
@@ -258,6 +264,150 @@ async def bland_webhook(request: Request, background_tasks: BackgroundTasks):
 
     print(f"[bland_webhook] Ingested call {call_id} → Coach-C call {call['id']} for agent {agent['id']}")
     return {"received": True, "call_id": call["id"]}
+
+
+def _twilio_callback_url(request: Request, path: str) -> str:
+    """Absolute https URL Twilio should call back. Forces https (Railway proxy
+    may report http) and carries the optional shared-secret query param."""
+    base = str(request.base_url).rstrip("/")
+    if base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    url = f"{base}{path}"
+    if settings.twilio_webhook_secret:
+        url += f"?k={settings.twilio_webhook_secret}"
+    return url
+
+
+def _twilio_secret_ok(request: Request) -> bool:
+    """If a shared secret is configured, the webhook URL must carry ?k=<secret>."""
+    if not settings.twilio_webhook_secret:
+        return True
+    return request.query_params.get("k") == settings.twilio_webhook_secret
+
+
+@router.post("/webhook/twilio/voice")
+async def twilio_voice(request: Request):
+    """
+    Twilio Voice webhook for an inbound call. Looks up the dialed number's org,
+    then returns TwiML that either bridges to the org's real line (recording both
+    legs) or records a message. The recording-complete callback ingests it.
+    """
+    if not _twilio_secret_ok(request):
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    form = await request.form()
+    to_number = form.get("To") or form.get("Called") or ""
+    db = get_supabase()
+    dialed = normalize_number(to_number)
+
+    forward_to = None
+    if dialed:
+        pn = (db.table("phone_numbers").select("forward_to")
+              .eq("number", dialed).eq("active", True).maybe_single().execute())
+        if pn and pn.data:
+            forward_to = pn.data.get("forward_to")
+
+    callback = _twilio_callback_url(request, "/api/calls/webhook/twilio/recording")
+
+    if forward_to:
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<Response>"
+            f'<Dial record="record-from-answer-dual" recordingStatusCallback="{callback}" '
+            'recordingStatusCallbackEvent="completed" answerOnBridge="true">'
+            f"<Number>{forward_to}</Number>"
+            "</Dial>"
+            "</Response>"
+        )
+    else:
+        twiml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<Response>"
+            "<Say>Thank you for calling. Please leave your name, number, and a brief "
+            "message after the tone.</Say>"
+            f'<Record maxLength="180" playBeep="true" recordingStatusCallback="{callback}" '
+            'recordingStatusCallbackEvent="completed"/>'
+            "</Response>"
+        )
+    return Response(content=twiml, media_type="application/xml")
+
+
+@router.post("/webhook/twilio/recording")
+async def twilio_recording(request: Request, background_tasks: BackgroundTasks):
+    """Twilio recording-complete callback: download the recording, attach it to
+    the org that owns the dialed number, and run the coaching pipeline."""
+    _EMPTY = Response(content="<Response/>", media_type="application/xml")
+    if not _twilio_secret_ok(request):
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    form = await request.form()
+    recording_url = form.get("RecordingUrl")
+    call_sid = form.get("CallSid") or form.get("RecordingSid") or uuid.uuid4().hex
+    to_number = form.get("To") or form.get("Called") or ""
+    from_number = form.get("From") or form.get("Caller") or ""
+    duration = form.get("RecordingDuration")
+    if not recording_url:
+        return _EMPTY
+
+    sid, token = settings.twilio_account_sid, settings.twilio_auth_token
+    if not (sid and token):
+        print("[twilio_recording] TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set — cannot fetch recording")
+        return _EMPTY
+
+    db = get_supabase()
+    dialed = normalize_number(to_number)
+    pn = (db.table("phone_numbers").select("brokerage_id, agent_id")
+          .eq("number", dialed).maybe_single().execute())
+    if not pn or not pn.data:
+        print(f"[twilio_recording] no phone_numbers match for To={to_number}")
+        return _EMPTY
+    brokerage_id = pn.data["brokerage_id"]
+    agent_id = pn.data["agent_id"]
+    if not agent_id:
+        print(f"[twilio_recording] no inbound agent on phone_numbers for org {brokerage_id}")
+        return _EMPTY
+
+    # Download the recording (Twilio needs Basic auth; .mp3 yields a playable file)
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60) as client:
+            resp = await client.get(f"{recording_url}.mp3", auth=(sid, token))
+            resp.raise_for_status()
+            audio_bytes = resp.content
+    except Exception as exc:
+        print(f"[twilio_recording] recording download failed: {exc}")
+        return _EMPTY
+
+    storage_path = f"{agent_id}/twilio-{call_sid}.mp3"
+    try:
+        db.storage.from_("call-recordings").upload(storage_path, audio_bytes, {"content-type": "audio/mpeg"})
+        signed = db.storage.from_("call-recordings").create_signed_url(storage_path, 3600)
+        audio_url = signed.get("signedURL") or storage_path
+    except Exception as exc:
+        print(f"[twilio_recording] storage upload failed: {exc}")
+        return _EMPTY
+
+    phone_hint = normalize_number(from_number) or None
+    dur = int(duration) if duration and str(duration).isdigit() else None
+
+    call = db.table("calls").insert({
+        "agent_id":         agent_id,
+        "brokerage_id":     brokerage_id,
+        "audio_url":        audio_url,
+        "call_date":        datetime.utcnow().isoformat(),
+        "status":           "uploaded",
+        "duration_seconds": dur,
+    }).execute().data[0]
+
+    background_tasks.add_task(
+        _process_call,
+        call["id"], agent_id, audio_url,
+        None,           # client_id — resolved inside _process_call
+        phone_hint,
+        None,           # file_modified_at
+        brokerage_id,
+    )
+    print(f"[twilio_recording] Ingested Twilio call {call_sid} → Coach-C call {call['id']} for org {brokerage_id}")
+    return _EMPTY
 
 
 @router.post("/upload")
