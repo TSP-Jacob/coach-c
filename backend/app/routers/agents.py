@@ -203,18 +203,21 @@ def get_agent(agent_id: str):
 @router.get("/{agent_id}/stats")
 def agent_stats(agent_id: str):
     db = get_supabase()
-    calls = db.table("calls").select("overall_score, call_type, created_at").eq("agent_id", agent_id).eq("status", "complete").execute().data
-    if not calls:
-        return {"total_calls": 0, "average_score": None, "by_type": {}}
-    scores = [c["overall_score"] for c in calls if c["overall_score"] is not None]
+    calls = db.table("calls").select("overall_score, call_type, status").eq("agent_id", agent_id).execute().data or []
+    # Total reflects every recorded call; scores/averages only from analyzed ones.
+    complete = [c for c in calls if c.get("status") == "complete"]
+    scores = [c["overall_score"] for c in complete if c.get("overall_score") is not None]
     by_type: dict = {}
-    for c in calls:
+    for c in complete:
+        score = c.get("overall_score")
+        if score is None:
+            continue  # don't fold null scores into the average — that crashed sum()
         ct = c.get("call_type") or "unknown"
-        by_type.setdefault(ct, []).append(c.get("overall_score"))
+        by_type.setdefault(ct, []).append(score)
     return {
         "total_calls": len(calls),
         "average_score": round(sum(scores) / len(scores)) if scores else None,
-        "by_type": {k: round(sum(v) / len(v)) for k, v in by_type.items() if v},
+        "by_type": {k: round(sum(v) / len(v)) for k, v in by_type.items()},
     }
 
 
