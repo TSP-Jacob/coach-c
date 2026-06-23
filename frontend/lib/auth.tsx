@@ -6,6 +6,10 @@ import { supabase } from "./supabase";
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 const DEMO_AGENT_ID = process.env.NEXT_PUBLIC_DEMO_AGENT_ID || "";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Chardin portal that owns the persistent login session for SSO users.
+const PORTAL_URL = process.env.NEXT_PUBLIC_PORTAL_URL || "https://www.chardinsystems.com";
 
 export function getExtToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -90,9 +94,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       session, agentId, role, loading,
       signOut: async () => {
-      // Clear SSO token if present (used when arriving from Chardin portal)
-      if (typeof window !== "undefined") sessionStorage.removeItem("ext_token");
+      if (typeof window === "undefined") { await supabase.auth.signOut(); return; }
+
+      // SSO users (arrived from the Chardin portal) carry an ext_token but have
+      // no Supabase session on this origin; direct Coach-C users have a session.
+      const ssoToken = sessionStorage.getItem("ext_token");
+
+      // Revoke server-side so the refresh token can't be reused (best effort).
+      try {
+        if (ssoToken) {
+          await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=global`, {
+            method: "POST",
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ssoToken}` },
+          });
+        } else {
+          await supabase.auth.signOut({ scope: "global" });
+        }
+      } catch { /* best effort — local clear below still runs */ }
+
+      // Clear this origin's state.
+      sessionStorage.removeItem("ext_token");
       await supabase.auth.signOut();
+      setSession(null);
+      setAgentId(null);
+      setRole(null);
+
+      // The SSO user's persistent session lives on the portal origin, which we
+      // can only clear by handing control back there with a sign-out signal.
+      if (ssoToken) {
+        window.location.href = `${PORTAL_URL}/login?signedout=1`;
+      }
     },
     }}>
       {children}
