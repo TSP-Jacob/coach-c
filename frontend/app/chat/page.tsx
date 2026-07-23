@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ChatMessage, Conversation } from "@/lib/api";
 import ChatInterface from "@/components/ChatInterface";
+import VoiceAssistant from "@/components/VoiceAssistant";
 import { useAuth } from "@/lib/auth";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Pencil, Check, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, Pencil, Check, X, Mic, Keyboard } from "lucide-react";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -22,6 +23,7 @@ export default function ChatPage() {
   const [messages,      setMessages]      = useState<ChatMessage[]>([]);
   const [loading,       setLoading]       = useState(false);
   const [panelOpen,     setPanelOpen]     = useState(true);
+  const [mode,          setMode]          = useState<"voice" | "text">("voice");
   const [editingId,     setEditingId]     = useState<string | null>(null);
   const [editTitle,     setEditTitle]     = useState("");
   const editRef = useRef<HTMLInputElement>(null);
@@ -129,8 +131,8 @@ export default function ChatPage() {
   return (
     <div className="flex h-full -mx-8 -my-6">
 
-      {/* ── Conversation panel ── */}
-      <div className={`flex flex-col border-r border-warm-border bg-sidebar transition-all duration-200 shrink-0 ${panelOpen ? "w-56" : "w-10"}`}>
+      {/* ── Conversation panel (text mode only) ── */}
+      <div className={`flex flex-col border-r border-warm-border bg-sidebar transition-all duration-200 shrink-0 ${mode === "text" ? (panelOpen ? "w-56" : "w-10") : "w-0 overflow-hidden border-r-0"}`}>
         {panelOpen ? (
           <>
             {/* Panel header */}
@@ -204,17 +206,38 @@ export default function ChatPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-charcoal">
-              {conversations.find(c => c.id === activeId)?.title ?? "Assistant"}
+              {mode === "voice" ? "Voice Assistant" : (conversations.find(c => c.id === activeId)?.title ?? "Assistant")}
             </h1>
-            <p className="text-xs text-muted mt-0.5">Your AI real estate assistant</p>
+            <p className="text-xs text-muted mt-0.5">
+              {mode === "voice" ? "Talk to your assistant — grounded in your calls & clients" : "Your AI real estate assistant"}
+            </p>
           </div>
-          {messages.length > 0 && (
-            <button onClick={clearMessages} className="text-xs text-muted hover:text-brand transition-colors">
-              Clear conversation
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {mode === "text" && messages.length > 0 && (
+              <button onClick={clearMessages} className="text-xs text-muted hover:text-brand transition-colors">
+                Clear conversation
+              </button>
+            )}
+            {/* Voice / Text mode toggle */}
+            <div className="flex items-center bg-gray-100 rounded-full p-0.5 text-xs">
+              <button
+                onClick={() => setMode("voice")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${mode === "voice" ? "bg-white text-charcoal shadow-sm" : "text-muted hover:text-charcoal"}`}
+              >
+                <Mic size={13} /> Voice
+              </button>
+              <button
+                onClick={() => setMode("text")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${mode === "text" ? "bg-white text-charcoal shadow-sm" : "text-muted hover:text-charcoal"}`}
+              >
+                <Keyboard size={13} /> Text
+              </button>
+            </div>
+          </div>
         </div>
-        <ChatInterface messages={messages} onSend={send} loading={loading} />
+        {mode === "voice"
+          ? <VoiceAssistant />
+          : <ChatInterface messages={messages} onSend={send} loading={loading} />}
       </div>
     </div>
   );

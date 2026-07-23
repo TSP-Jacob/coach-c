@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     assemblyai_api_key: str
     supabase_url: str
     supabase_service_role_key: str
+    # Gemini Live (voice assistant). Live API key from Google AI Studio / Vertex.
+    # If unset, the /api/voice/live WebSocket refuses connections.
+    gemini_api_key: str = ""
+    # Live model id — override per whatever your key has access to.
+    gemini_live_model: str = "gemini-live-2.5-flash-preview"
     # Stripe (optional — billing features disabled if not set)
     stripe_secret_key: str = ""
     stripe_publishable_key: str = ""

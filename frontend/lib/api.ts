@@ -14,6 +14,20 @@ async function authHeaders(): Promise<Record<string, string>> {
     : {};
 }
 
+/** Bearer token (SSO ext token or Supabase session) for non-fetch transports
+ *  like the voice WebSocket, which can't send an Authorization header. */
+export async function getAuthToken(): Promise<string | null> {
+  const extToken = getExtToken();
+  if (extToken) return extToken;
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}
+
+/** ws(s):// base derived from the REST API URL. */
+export function wsBase(): string {
+  return BASE.replace(/^http/, "ws");
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const hasBody = init?.body !== undefined;
   const isFormData = init?.body instanceof FormData;

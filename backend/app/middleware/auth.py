@@ -22,6 +22,16 @@ async def get_jwt_agent_id(
         return None
 
     token = authorization.split(" ", 1)[1]
+    return await resolve_agent_from_token(token)
+
+
+async def resolve_agent_from_token(token: str) -> str | None:
+    """Verify a Supabase JWT and return the linked agent_id.
+
+    Shared by the HTTP `get_jwt_agent_id` dependency and the voice WebSocket
+    (which can't use a Header dependency). Raises HTTPException on an invalid
+    token; auto-creates a minimal agent profile if the user has none yet.
+    """
     db = get_supabase()
 
     try:
