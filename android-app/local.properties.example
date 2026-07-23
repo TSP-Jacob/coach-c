@@ -1,0 +1,8 @@
+## Copy this file to local.properties and fill in your values.
+## local.properties is gitignored and never committed.
+
+sdk.dir=/path/to/Android/Sdk
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+API_BASE_URL=https://coach-c-theta.vercel.app
