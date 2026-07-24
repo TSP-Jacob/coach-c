@@ -63,13 +63,18 @@ export class VoiceSession {
   private transcript: TranscriptEntry[] = [];
   private state: VoiceState = "idle";
   private muted = false;
+  private ready = false; // true once the server sends "ready" (auth accepted)
   private closed = false;
   private levelThrottle = 0;
 
   constructor(
-    private wsUrl: string,       // full ws(s):// URL incl. ?token=&tz=
+    private wsUrl: string,            // ws(s):// URL incl. ?tz= (no token — sent in-band)
+    private token: string | null,     // JWT, sent as the first frame after open
     private cb: VoiceCallbacks = {},
-  ) {}
+    initialTranscript: TranscriptEntry[] = [], // prior history to seed the view
+  ) {
+    if (initialTranscript.length) this.transcript = [...initialTranscript];
+  }
 
   getTranscript() { return this.transcript; }
   isMuted() { return this.muted; }
@@ -110,7 +115,7 @@ export class VoiceSession {
     }
 
     // ── Mic capture at 16 kHz ──
-    this.inCtx = new AudioContext({ sampleRate: INPUT_RATE });
+    this.inCtx = new AudioContext({ sampleRate: INPUT_RATE, latencyHint: "interactive" });
     const blobUrl = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
     await this.inCtx.audioWorklet.addModule(blobUrl);
     URL.revokeObjectURL(blobUrl);
@@ -124,7 +129,7 @@ export class VoiceSession {
     this.worklet.connect(sink).connect(this.inCtx.destination);
 
     // ── Playback context ──
-    this.outCtx = new AudioContext();
+    this.outCtx = new AudioContext({ latencyHint: "interactive" });
     this.outGain = this.outCtx.createGain();
     this.outGain.connect(this.outCtx.destination);
     await this.resume();
@@ -132,6 +137,12 @@ export class VoiceSession {
     // ── WebSocket ──
     this.ws = new WebSocket(this.wsUrl);
     this.ws.binaryType = "arraybuffer";
+    this.ws.onopen = () => {
+      // Authenticate in-band as the very first frame — keeps the JWT out of the
+      // URL (and therefore out of server access logs). Mic audio is withheld
+      // until the server replies "ready", so this is always the first message.
+      try { this.ws?.send(JSON.stringify({ type: "auth", token: this.token })); } catch {}
+    };
     this.ws.onmessage = (e) => this.onWsMessage(e);
     this.ws.onerror = () => { if (!this.closed) this.cb.onError?.("Connection error."); };
     this.ws.onclose = () => { if (!this.closed) this.setState("closed"); };
@@ -144,11 +155,13 @@ export class VoiceSession {
       this.levelThrottle = now;
       this.cb.onLevel?.(Math.min(1, data.level * 4));
     }
-    if (this.muted || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.muted || !this.ready || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     // Batch ~100 ms of audio before sending to cut message overhead.
     this.pending.push(new Int16Array(data.pcm));
     this.pendingLen += data.pcm.byteLength / 2;
-    if (this.pendingLen >= INPUT_RATE / 10) {
+    // Flush ~50 ms of audio at a time — small enough to keep input latency low,
+    // large enough to avoid per-packet overhead.
+    if (this.pendingLen >= INPUT_RATE / 20) {
       const merged = new Int16Array(this.pendingLen);
       let off = 0;
       for (const chunk of this.pending) { merged.set(chunk, off); off += chunk.length; }
@@ -164,6 +177,7 @@ export class VoiceSession {
       try { msg = JSON.parse(e.data); } catch { return; }
       switch (msg.type) {
         case "ready":
+          this.ready = true;
           this.setState("listening");
           break;
         case "input_transcript":
@@ -242,6 +256,7 @@ export class VoiceSession {
 
   stop() {
     this.closed = true;
+    this.ready = false;
     try { this.ws?.send(JSON.stringify({ type: "end" })); } catch {}
     try { this.ws?.close(); } catch {}
     this.stopPlayback();

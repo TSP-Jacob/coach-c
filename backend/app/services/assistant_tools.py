@@ -152,25 +152,30 @@ def _shape_call(c: dict, tz_name: str | None) -> dict:
         "date": _fmt_date(c.get("call_date") or c.get("created_at"), tz_name),
         "type": (c.get("call_type") or "unknown").replace("_", " "),
         "score": c.get("overall_score"),
-        "summary": _call_summary(report),
+        # Keep it lean — a voice reply is short, and bulky tool results slow the
+        # model down. Truncate the summary and drop verbose arrays.
+        "summary": _call_summary(report)[:200].strip(),
     }
-    if isinstance(report, dict):
-        if report.get("priority_focus"):
-            out["priority_focus"] = report["priority_focus"]
-        if report.get("strengths"):
-            out["strengths"] = report["strengths"][:3]
+    if isinstance(report, dict) and report.get("priority_focus"):
+        out["priority_focus"] = report["priority_focus"]
     return out
 
 
 # ── Tool implementations ──────────────────────────────────────────────────────
 def _search_calls(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     limit = _clamp_limit(args.get("limit"))
+    keyword = (args.get("keyword") or "").strip().lower()
+
+    # Only pull the (large) transcript column when we actually keyword-filter on
+    # it, and only over-fetch rows when there's filtering to do — both cut the
+    # payload and query time for the common no-keyword case.
+    cols = ["id", "call_date", "call_type", "overall_score", "coaching_report",
+            "created_at", "client_id", "clients(name)"]
+    if keyword:
+        cols.insert(-1, "transcript")
     q = (
         db.table("calls")
-        .select(
-            "id, call_date, call_type, overall_score, coaching_report, "
-            "transcript, created_at, client_id, clients(name)"
-        )
+        .select(", ".join(cols))
         .eq("agent_id", agent_id)
         .eq("status", "complete")
     )
@@ -187,9 +192,9 @@ def _search_calls(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     if args.get("date_to"):
         q = q.lte("call_date", args["date_to"])
 
-    rows = q.order("call_date", desc=True).limit(60).execute().data or []
+    fetch = 60 if keyword else limit
+    rows = q.order("call_date", desc=True).limit(fetch).execute().data or []
 
-    keyword = (args.get("keyword") or "").strip().lower()
     if keyword:
         def _hit(c):
             hay = _call_summary(c.get("coaching_report")).lower()
@@ -311,6 +316,37 @@ _DISPATCH = {
     "list_recent_calls": _list_recent_calls,
     "search_notes": _search_notes,
 }
+
+
+def build_recent_context(db, agent_id: str, tz_name: str | None = None, limit: int = 10) -> str:
+    """A compact digest of the agent's most recent calls, to pre-load into the
+    voice system prompt so common recall questions ("my last call", "recent
+    calls", "how did I do lately") are answered instantly — with no tool
+    round-trip. Deeper/specific lookups still fall through to the tools."""
+    try:
+        rows = (
+            db.table("calls")
+            .select("call_date, call_type, overall_score, coaching_report, created_at, clients(name)")
+            .eq("agent_id", agent_id)
+            .eq("status", "complete")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return ""
+    lines = []
+    for c in rows:
+        client = (c.get("clients") or {}).get("name") or "Unknown client"
+        date = _fmt_date(c.get("call_date") or c.get("created_at"), tz_name)
+        ctype = (c.get("call_type") or "unknown").replace("_", " ")
+        score = c.get("overall_score")
+        summary = _call_summary(c.get("coaching_report"))[:140].strip()
+        score_str = f"{score}/100" if score is not None else "no score"
+        lines.append(f"- {client} | {date} | {ctype} | {score_str}" + (f" | {summary}" if summary else ""))
+    return "\n".join(lines)
 
 
 def execute_tool(db, agent_id: str, name: str, args: dict, tz_name: str | None = None) -> dict:

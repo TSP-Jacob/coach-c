@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getAuthToken, wsBase } from "@/lib/api";
+import { api, getAuthToken, wsBase } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { VoiceSession, VoiceState, TranscriptEntry } from "@/lib/voiceClient";
 import { Mic, MicOff, Keyboard, Send, RotateCcw, Loader2, AudioLines, AlertCircle } from "lucide-react";
 import { clsx } from "clsx";
@@ -23,29 +24,42 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
   const [showText, setShowText] = useState(false);
   const [text, setText]       = useState("");
 
+  const { agentId } = useAuth();
   const sessionRef = useRef<VoiceSession | null>(null);
   const bottomRef  = useRef<HTMLDivElement>(null);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (history: TranscriptEntry[] = []) => {
     setError(null);
     const token = await getAuthToken();
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const url = `${wsBase()}/api/voice/live?tz=${encodeURIComponent(tz)}` +
-      (token ? `&token=${encodeURIComponent(token)}` : "");
-    const s = new VoiceSession(url, {
+    const url = `${wsBase()}/api/voice/live?tz=${encodeURIComponent(tz)}`;
+    const s = new VoiceSession(url, token, {
       onState: setState,
       onTranscript: setEntries,
       onLevel: setLevel,
       onError: (m) => setError(m),
-    });
+    }, history);
     sessionRef.current = s;
     await s.start();
   }, []);
 
   useEffect(() => {
-    connect();
-    return () => { sessionRef.current?.stop(); sessionRef.current = null; };
-  }, [connect]);
+    let cancelled = false;
+    (async () => {
+      // Seed the view with recent history so the user sees what was discussed last.
+      let history: TranscriptEntry[] = [];
+      if (agentId) {
+        try {
+          const rows = await api.chat.history(agentId);
+          history = rows.map((m) => ({ role: m.role, text: m.content }));
+        } catch { /* start empty if history can't be loaded */ }
+      }
+      if (cancelled) return;
+      setEntries(history);
+      await connect(history);
+    })();
+    return () => { cancelled = true; sessionRef.current?.stop(); sessionRef.current = null; };
+  }, [agentId, connect]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [entries]);
 
