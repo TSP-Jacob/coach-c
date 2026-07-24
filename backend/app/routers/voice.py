@@ -47,23 +47,32 @@ def _system_instruction(agent_name: str, tz_name: str | None, recent_context: st
     )
     if recent_context:
         base += (
-            "\n\nThe agent's most recent calls are listed below for quick "
-            "reference — answer questions about recent activity directly from "
-            "this list, WITHOUT calling a tool, so replies stay fast:\n"
+            "\n\nFor quick reference, here are the agent's 10 MOST RECENT calls "
+            "ONLY. This is NOT the full history — older calls and many clients "
+            "are not shown here:\n"
             f"{recent_context}\n\n"
-            "Only call the provided tools when the answer needs something not in "
-            "this list — an older call, a specific client's full history, notes, "
-            "or a keyword search. "
+            "How to use this list:\n"
+            "- You may answer directly from it ONLY when the question is clearly "
+            "about these recent calls and the answer is fully present above.\n"
+            "- You MUST call the tools (search_calls, get_client_history, "
+            "search_notes) whenever the user names a specific person, asks about "
+            "an older or specific date, asks about anything before the earliest "
+            "call listed above, or asks about their full/complete/entire history "
+            "— even if you think you already know the answer from this list.\n"
+            "- CRITICAL: never tell the user a client, call, or detail does not "
+            "exist based on this list alone. Before saying something was not "
+            "found, you MUST call a tool to search the full records, and only "
+            "report it as not found if the tool itself returns nothing. "
         )
     else:
         base += (
             "When the user asks about past calls, clients, offers, scores, or "
-            "dates, call the provided tools to look up real records. "
+            "dates, you MUST call the provided tools to look up real records "
+            "before answering. "
         )
     base += (
-        "Never invent client names, dates, or details — if you don't have it and "
-        "a tool returns nothing, say so plainly. When you reference a specific "
-        "call, mention the client and the date."
+        "Never invent client names, dates, or details. When you reference a "
+        "specific call, mention the client and the date."
     )
     return base
 

@@ -215,7 +215,7 @@ def _get_client_history(db, agent_id: str, args: dict, tz_name: str | None) -> d
 
     clients = (
         db.table("clients")
-        .select("id, name, phone, email, type, client_status, location, notes")
+        .select("id, name, phone, email, type, notes")
         .eq("agent_id", agent_id)
         .ilike("name", f"%{name}%")
         .execute()
@@ -240,22 +240,24 @@ def _get_client_history(db, agent_id: str, args: dict, tz_name: str | None) -> d
             .data
             or []
         )
-        notes = (
-            db.table("notes")
-            .select("content, created_at")
-            .eq("agent_id", agent_id)
-            .eq("client_id", cid)
-            .order("created_at", desc=True)
-            .limit(20)
-            .execute()
-            .data
-            or []
-        )
+        try:
+            notes = (
+                db.table("notes")
+                .select("content, created_at")
+                .eq("agent_id", agent_id)
+                .eq("client_id", cid)
+                .order("created_at", desc=True)
+                .limit(20)
+                .execute()
+                .data
+                or []
+            )
+        except Exception:
+            # Notes are optional — never let their absence sink a call-history answer.
+            notes = []
         results.append({
             "name": client.get("name"),
             "type": client.get("type"),
-            "status": client.get("client_status"),
-            "location": client.get("location"),
             "profile_notes": client.get("notes"),
             "calls": [_shape_call(c, tz_name) for c in calls],
             "notes": [
@@ -286,17 +288,20 @@ def _search_notes(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     keyword = (args.get("keyword") or "").strip()
     if not keyword:
         return {"error": "keyword is required."}
-    rows = (
-        db.table("notes")
-        .select("content, created_at, clients(name)")
-        .eq("agent_id", agent_id)
-        .ilike("content", f"%{keyword}%")
-        .order("created_at", desc=True)
-        .limit(20)
-        .execute()
-        .data
-        or []
-    )
+    try:
+        rows = (
+            db.table("notes")
+            .select("content, created_at, clients(name)")
+            .eq("agent_id", agent_id)
+            .ilike("content", f"%{keyword}%")
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return {"count": 0, "notes": [], "note": "Saved notes are not available."}
     return {
         "count": len(rows),
         "notes": [
