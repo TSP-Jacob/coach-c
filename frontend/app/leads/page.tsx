@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { api, Agent, Lead, OrgProfile } from "@/lib/api";
+import useSWR from "swr";
+import { api, Lead } from "@/lib/api";
 import { Phone, Mail, PhoneCall, MessageSquare, AtSign, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -101,26 +102,25 @@ function RespondPopover({ onSelect }: { onSelect: (method: string) => void }) {
 export default function LeadsPage() {
   const { agentId, role } = useAuth();
   const canManage = role === "admin" || role === "manager";
-  const [leads, setLeads]   = useState<Lead[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [orgs, setOrgs]     = useState<OrgProfile[]>([]);
   const [sourceFilter, setSourceFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [orgFilter, setOrgFilter]       = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const isAdmin = role === "admin";
 
-  useEffect(() => {
-    if (!agentId) return;
-    // Managers/admins: backend returns all org leads (agent_id param omitted)
-    // Employees: backend scopes to their assigned + unassigned
-    api.leads.list(canManage ? undefined : agentId, sourceFilter || undefined, statusFilter || undefined, orgFilter || undefined).then(setLeads);
-    if (canManage) api.agents.list().then(setAgents);
-    if (isAdmin) api.organization.listAll().then(setOrgs);
-  }, [agentId, role, sourceFilter, statusFilter, orgFilter]);
+  // Leads arrive server-side via webhooks, so poll every 30s (on top of the
+  // global focus-revalidate) to surface new leads without a manual refresh.
+  // Managers/admins get all org leads (agent_id omitted); employees are scoped.
+  const { data: leads = [], mutate: mutateLeads } = useSWR<Lead[]>(
+    agentId ? ["leads", canManage ? "org" : agentId, sourceFilter, statusFilter, orgFilter] : null,
+    () => api.leads.list(canManage ? undefined : agentId!, sourceFilter || undefined, statusFilter || undefined, orgFilter || undefined),
+    { refreshInterval: 30_000 },
+  );
+  const { data: agents = [] } = useSWR(agentId && canManage ? ["agents-all"] : null, () => api.agents.list());
+  const { data: orgs = [] } = useSWR(agentId && isAdmin ? ["orgs-all"] : null, () => api.organization.listAll());
 
   function patchLead(id: string, updates: Partial<Lead>) {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+    mutateLeads(prev => (prev ?? []).map(l => l.id === id ? { ...l, ...updates } : l), false);
   }
 
   async function handleAssign(id: string, newAgentId: string) {
@@ -128,7 +128,7 @@ export default function LeadsPage() {
     try {
       await api.leads.update(id, { agent_id: newAgentId || undefined });
     } catch {
-      api.leads.list(agentId!, sourceFilter || undefined, statusFilter || undefined).then(setLeads);
+      mutateLeads();
     }
   }
 
@@ -137,7 +137,7 @@ export default function LeadsPage() {
     try {
       await api.leads.update(id, { contact_method: method });
     } catch {
-      api.leads.list(agentId!, sourceFilter || undefined, statusFilter || undefined).then(setLeads);
+      mutateLeads();
     }
   }
 
@@ -146,7 +146,7 @@ export default function LeadsPage() {
     try {
       await api.leads.update(id, { status });
     } catch {
-      api.leads.list(agentId!, sourceFilter || undefined, statusFilter || undefined).then(setLeads);
+      mutateLeads();
     }
   }
 

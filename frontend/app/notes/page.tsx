@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { api, Client, Note } from "@/lib/api";
+import { useRef, useState } from "react";
+import useSWR from "swr";
+import { api, Client } from "@/lib/api";
 import { Mic, MicOff, Trash2, NotebookPen } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -12,20 +13,14 @@ function formatDateTime(iso: string) {
 
 export default function NotesPage() {
   const { agentId } = useAuth();
-  const [notes,   setNotes]   = useState<Note[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const { data: notes = [], mutate: mutateNotes } = useSWR(agentId ? ["notes", agentId] : null, () => api.notes.list(agentId!));
+  const { data: clients = [] } = useSWR(agentId ? ["clients", agentId] : null, () => api.agents.listClients(agentId!));
   const [clientId, setClientId] = useState("");
   const [content,  setContent]  = useState("");
   const [saving,   setSaving]   = useState(false);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (!agentId) return;
-    api.notes.list(agentId).then(setNotes);
-    api.agents.listClients(agentId).then(setClients);
-  }, [agentId]);
 
   /* ── Voice transcription ── */
   function startListening() {
@@ -70,7 +65,7 @@ export default function NotesPage() {
       });
       // Attach client name locally so it shows immediately
       const linkedClient = clients.find(c => c.id === clientId);
-      setNotes(prev => [{ ...note, clients: linkedClient ? { name: linkedClient.name } : undefined }, ...prev]);
+      mutateNotes(prev => [{ ...note, clients: linkedClient ? { name: linkedClient.name } : undefined }, ...(prev ?? [])], false);
       setContent("");
       setClientId("");
       textareaRef.current?.focus();
@@ -81,7 +76,7 @@ export default function NotesPage() {
 
   async function handleDelete(noteId: string) {
     await api.notes.delete(noteId);
-    setNotes(prev => prev.filter(n => n.id !== noteId));
+    mutateNotes(prev => (prev ?? []).filter(n => n.id !== noteId), false);
   }
 
   return (

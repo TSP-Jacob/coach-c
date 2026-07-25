@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, TeamMember } from "@/lib/api";
+import useSWR from "swr";
+import { api } from "@/lib/api";
 import { TrendingUp, Phone } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
@@ -13,16 +13,10 @@ const roleBadge: Record<string, string> = {
 
 export default function AgentsPage() {
   const { agentId, loading: authLoading } = useAuth();
-  const [team, setTeam] = useState<TeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (authLoading) return;
-    api.agents.team()
-      .then(setTeam)
-      .catch(() => setTeam([]))
-      .finally(() => setLoading(false));
-  }, [authLoading]);
+  // SWR-cached; the global config revalidates on focus/navigation, which is
+  // plenty fresh for a rarely-changing team roster.
+  const { data: team = [], isLoading } = useSWR(!authLoading ? ["team"] : null, () => api.agents.team().catch(() => []));
+  const loading = authLoading || isLoading;
 
   // Org-wide roll-up
   const totalCalls = team.reduce((s, m) => s + m.total_calls, 0);
