@@ -1,6 +1,7 @@
 "use client";
 import useSWR from "swr";
 import { api, Call } from "@/lib/api";
+import { pollWhileProcessing } from "@/lib/swr";
 import ScoreBadge from "@/components/ScoreBadge";
 import ScoreTrend from "@/components/ScoreTrend";
 import Link from "next/link";
@@ -30,9 +31,16 @@ function StatCard({ label, value, delta }: { label: string; value: string; delta
 export default function Dashboard() {
   const { agentId: AGENT_ID } = useAuth();
   // Cached via SWR — revisiting the dashboard shows data instantly, then revalidates.
-  const { data: stats = null } = useSWR(AGENT_ID ? ["stats", AGENT_ID] : null, () => api.agents.stats(AGENT_ID!));
-  const { data: calls = [] } = useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!));
-  const { data: insights = null } = useSWR(AGENT_ID ? ["insights", AGENT_ID] : null, () => api.calls.insights().catch(() => null));
+  const { data: calls = [] } = useSWR<Call[]>(
+    AGENT_ID ? ["calls", AGENT_ID] : null,
+    () => api.calls.list(AGENT_ID!),
+    { refreshInterval: pollWhileProcessing },
+  );
+  // While a call is still being analyzed server-side, keep the derived stats
+  // and insights live too (they change when a call completes).
+  const busy = pollWhileProcessing(calls) > 0;
+  const { data: stats = null } = useSWR(AGENT_ID ? ["stats", AGENT_ID] : null, () => api.agents.stats(AGENT_ID!), { refreshInterval: busy ? 5000 : 0 });
+  const { data: insights = null } = useSWR(AGENT_ID ? ["insights", AGENT_ID] : null, () => api.calls.insights().catch(() => null), { refreshInterval: busy ? 5000 : 0 });
 
   const recentCalls = calls.slice(0, 8);
 

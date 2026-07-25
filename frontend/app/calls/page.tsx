@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
+import { pollWhileProcessing } from "@/lib/swr";
 import { api, Call } from "@/lib/api";
 import CallUpload from "@/components/CallUpload";
 import ScoreBadge from "@/components/ScoreBadge";
@@ -56,7 +57,11 @@ function passesScore(call: Call, filter: string): boolean {
 export default function CallsPage() {
   const { agentId: AGENT_ID } = useAuth();
   // SWR-cached: instant on revisit, shares the "calls" cache with the dashboard.
-  const { data: calls = [], mutate: reloadCalls } = useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!));
+  const { data: calls = [], mutate: reloadCalls } = useSWR<Call[]>(
+    AGENT_ID ? ["calls", AGENT_ID] : null,
+    () => api.calls.list(AGENT_ID!),
+    { refreshInterval: pollWhileProcessing },
+  );
   const { data: agent = null } = useSWR(AGENT_ID ? ["agent", AGENT_ID] : null, () => api.agents.get(AGENT_ID!));
   const [showUpload, setShowUpload] = useState(false);
   const [search, setSearch]         = useState("");

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
+import { pollWhileProcessing } from "@/lib/swr";
 import { useSearchParams } from "next/navigation";
 import { api, Call, Client, Consent } from "@/lib/api";
 import Link from "next/link";
@@ -65,7 +66,8 @@ export default function ClientsPage() {
   const { data: clients = [], mutate: mutateClients } =
     useSWR(AGENT_ID ? ["clients", AGENT_ID] : null, () => api.agents.listClients(AGENT_ID!));
   const { data: calls = [] } =
-    useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!));
+    useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!),
+      { refreshInterval: pollWhileProcessing });
   const { data: agents = [] } =
     useSWR(AGENT_ID ? ["agents-all"] : null, () => api.agents.list());
   const [search,     setSearch]     = useState("");
