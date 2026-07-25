@@ -102,7 +102,15 @@ export default function Sidebar() {
               </button>
             </div>
             <NavLinks onNav={() => setOpen(false)} />
-            <div className="px-6 py-4 border-t border-warm-border">
+            <div className="px-6 py-4 border-t border-warm-border space-y-2">
+              {!SKIP_AUTH && (session || agentId) && (
+                <button
+                  onClick={() => { setOpen(false); handleSignOut(); }}
+                  className="flex items-center gap-2 text-xs text-muted hover:text-brand transition-colors w-full"
+                >
+                  <LogOut size={13} strokeWidth={1.5} /> Sign out
+                </button>
+              )}
               <p className="text-xs text-muted">Propria Systems © 2025</p>
             </div>
           </aside>
