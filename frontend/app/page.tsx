@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { api, AgentStats, Call, CoachingInsights } from "@/lib/api";
+import useSWR from "swr";
+import { api, Call } from "@/lib/api";
 import ScoreBadge from "@/components/ScoreBadge";
 import ScoreTrend from "@/components/ScoreTrend";
 import Link from "next/link";
@@ -29,16 +29,10 @@ function StatCard({ label, value, delta }: { label: string; value: string; delta
 
 export default function Dashboard() {
   const { agentId: AGENT_ID } = useAuth();
-  const [stats, setStats] = useState<AgentStats | null>(null);
-  const [calls, setCalls] = useState<Call[]>([]);
-  const [insights, setInsights] = useState<CoachingInsights | null>(null);
-
-  useEffect(() => {
-    if (!AGENT_ID) return;
-    api.agents.stats(AGENT_ID).then(setStats);
-    api.calls.list(AGENT_ID).then(setCalls);
-    api.calls.insights().then(setInsights).catch(() => {});
-  }, []);
+  // Cached via SWR — revisiting the dashboard shows data instantly, then revalidates.
+  const { data: stats = null } = useSWR(AGENT_ID ? ["stats", AGENT_ID] : null, () => api.agents.stats(AGENT_ID!));
+  const { data: calls = [] } = useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!));
+  const { data: insights = null } = useSWR(AGENT_ID ? ["insights", AGENT_ID] : null, () => api.calls.insights().catch(() => null));
 
   const recentCalls = calls.slice(0, 8);
 

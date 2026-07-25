@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { useSearchParams } from "next/navigation";
-import { api, Call, Client, Agent, Consent } from "@/lib/api";
+import { api, Call, Client, Consent } from "@/lib/api";
 import Link from "next/link";
 import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -60,19 +61,16 @@ interface ClientRow extends Client {
 export default function ClientsPage() {
   const { agentId: AGENT_ID } = useAuth();
   const searchParams = useSearchParams();
-  const [clients,    setClients]    = useState<Client[]>([]);
-  const [calls,      setCalls]      = useState<Call[]>([]);
-  const [agents,     setAgents]     = useState<Agent[]>([]);
+  // SWR-cached: instant on revisit; "calls" cache is shared with the dashboard.
+  const { data: clients = [], mutate: mutateClients } =
+    useSWR(AGENT_ID ? ["clients", AGENT_ID] : null, () => api.agents.listClients(AGENT_ID!));
+  const { data: calls = [] } =
+    useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!));
+  const { data: agents = [] } =
+    useSWR(AGENT_ID ? ["agents-all"] : null, () => api.agents.list());
   const [search,     setSearch]     = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(searchParams.get("open"));
   const [consentsMap, setConsentsMap] = useState<Record<string, Consent[]>>({});
-
-  useEffect(() => {
-    if (!AGENT_ID) return;
-    api.agents.listClients(AGENT_ID).then(setClients);
-    api.calls.list(AGENT_ID).then(setCalls);
-    api.agents.list().then(setAgents);
-  }, [AGENT_ID]);
 
   // Load consents when a client row is expanded
   useEffect(() => {
@@ -116,12 +114,12 @@ export default function ClientsPage() {
     ), [rows, search]);
 
   async function handleStatusChange(clientId: string, newStatus: string) {
-    setClients(prev => prev.map(c => c.id === clientId ? { ...c, client_status: newStatus } : c));
+    mutateClients(prev => (prev ?? []).map(c => c.id === clientId ? { ...c, client_status: newStatus } : c), false);
     await api.agents.updateClient(clientId, { client_status: newStatus });
   }
 
   async function handleLocationSave(clientId: string, location: string) {
-    setClients(prev => prev.map(c => c.id === clientId ? { ...c, location } : c));
+    mutateClients(prev => (prev ?? []).map(c => c.id === clientId ? { ...c, location } : c), false);
     await api.agents.updateClient(clientId, { location });
   }
 

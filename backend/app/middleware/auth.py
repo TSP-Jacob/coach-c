@@ -9,10 +9,23 @@ Auto-create: if the JWT is valid but no agent profile is linked yet
 (e.g. the register call failed during sign-up), we create one on the
 fly using the email from the Supabase user record.
 """
+import time
 from fastapi import Header, HTTPException
 from app.database import get_supabase
 
 _DEMO_BROKERAGE_ID = "00000000-0000-0000-0000-000000000001"
+
+# In-memory token -> agent_id cache. Verifying a Supabase JWT and resolving the
+# agent is ~2 network round-trips; a signed-in user makes many requests with the
+# same token, so caching the result for a short window removes that cost from
+# nearly every call. Short TTL keeps auth changes reasonably fresh.
+_TOKEN_TTL_SECONDS = 300
+_token_cache: dict[str, tuple[str, float]] = {}
+
+
+def _prune_token_cache(now: float) -> None:
+    for k in [k for k, (_, exp) in _token_cache.items() if exp <= now]:
+        _token_cache.pop(k, None)
 
 
 async def get_jwt_agent_id(
@@ -26,12 +39,26 @@ async def get_jwt_agent_id(
 
 
 async def resolve_agent_from_token(token: str) -> str | None:
-    """Verify a Supabase JWT and return the linked agent_id.
+    """Verify a Supabase JWT and return the linked agent_id (short-TTL cached).
 
     Shared by the HTTP `get_jwt_agent_id` dependency and the voice WebSocket
     (which can't use a Header dependency). Raises HTTPException on an invalid
     token; auto-creates a minimal agent profile if the user has none yet.
     """
+    now = time.monotonic()
+    hit = _token_cache.get(token)
+    if hit and hit[1] > now:
+        return hit[0]
+
+    agent_id = await _resolve_agent_uncached(token)
+    if agent_id:
+        if len(_token_cache) > 2000:
+            _prune_token_cache(now)
+        _token_cache[token] = (agent_id, now + _TOKEN_TTL_SECONDS)
+    return agent_id
+
+
+async def _resolve_agent_uncached(token: str) -> str | None:
     db = get_supabase()
 
     try:

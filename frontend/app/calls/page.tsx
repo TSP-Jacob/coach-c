@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { api, Agent, Call } from "@/lib/api";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
+import { api, Call } from "@/lib/api";
 import CallUpload from "@/components/CallUpload";
 import ScoreBadge from "@/components/ScoreBadge";
 import { useToast } from "@/components/Toast";
@@ -54,8 +55,9 @@ function passesScore(call: Call, filter: string): boolean {
 
 export default function CallsPage() {
   const { agentId: AGENT_ID } = useAuth();
-  const [calls, setCalls]           = useState<Call[]>([]);
-  const [agent, setAgent]           = useState<Agent | null>(null);
+  // SWR-cached: instant on revisit, shares the "calls" cache with the dashboard.
+  const { data: calls = [], mutate: reloadCalls } = useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!));
+  const { data: agent = null } = useSWR(AGENT_ID ? ["agent", AGENT_ID] : null, () => api.agents.get(AGENT_ID!));
   const [showUpload, setShowUpload] = useState(false);
   const [search, setSearch]         = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -63,17 +65,11 @@ export default function CallsPage() {
   const [scoreFilter, setScoreFilter] = useState("all");
   const { toast } = useToast();
 
-  const load = () => api.calls.list(AGENT_ID ?? undefined).then(setCalls);
-  useEffect(() => {
-    load();
-    if (AGENT_ID) api.agents.get(AGENT_ID).then(setAgent);
-  }, [AGENT_ID]);
-
   const remove = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     await api.calls.delete(id);
     toast("Call deleted");
-    load();
+    reloadCalls();
   };
 
   const clearFilters = () => {
@@ -119,7 +115,7 @@ export default function CallsPage() {
       {showUpload && (
         <CallUpload agentId={AGENT_ID ?? ""} onSuccess={() => {
           setShowUpload(false);
-          load();
+          reloadCalls();
           toast("Call uploaded — analysis started");
         }} />
       )}
