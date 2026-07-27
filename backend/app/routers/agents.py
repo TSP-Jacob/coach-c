@@ -9,6 +9,25 @@ router = APIRouter()
 # Hardcoded demo brokerage — used for new sign-ups until multi-tenancy lands
 _DEMO_BROKERAGE_ID = "00000000-0000-0000-0000-000000000001"
 
+# ─── Per-user feature toggles ─────────────────────────────────────────────────
+# Admins flip these per person on the Team page. Keys are the canonical feature
+# ids; the value is the default used when an admin hasn't set one explicitly.
+# `call_coaching` is OFF by default — call scoring/coaching is opt-in per user.
+# Stored in agents.feature_flags (JSONB, migration 007). The read paths tolerate
+# the column being absent so the app keeps working before the migration is run.
+FEATURE_DEFAULTS: dict[str, bool] = {
+    "call_coaching":   False,
+    "leads":           True,
+    "voice_assistant": True,
+    "notes":           True,
+}
+
+
+def merged_features(stored) -> dict:
+    """Overlay an agent's stored flags onto the defaults, dropping unknown keys."""
+    stored = stored or {}
+    return {k: bool(stored.get(k, default)) for k, default in FEATURE_DEFAULTS.items()}
+
 
 class AgentCreate(BaseModel):
     brokerage_id: str
@@ -113,7 +132,11 @@ def get_my_agent(jwt_agent_id: str = Depends(get_jwt_agent_id)):
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return result.data
+    data = result.data
+    # Always hand the frontend a complete, defaulted feature set (works whether
+    # or not the feature_flags column has been added yet).
+    data["feature_flags"] = merged_features(data.get("feature_flags"))
+    return data
 
 
 # ─── Admin: team management ───────────────────────────────────────────────────
@@ -132,16 +155,28 @@ class RoleUpdate(BaseModel):
     role: str
 
 
+class FeatureUpdate(BaseModel):
+    feature: str
+    enabled: bool
+
+
 @router.get("/all")
 def list_all_agents(jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
-    """Admin-only: every agent with role + organization, for team management."""
+    """Admin-only: every agent with role + organization + feature flags, for team management."""
     _require_admin(jwt_agent_id)
     db = get_supabase()
-    return (db.table("agents")
-            .select("id, name, email, role, brokerage_id, brokerages(name)")
-            .order("role")
-            .order("name")
-            .execute().data)
+    base = "id, name, email, role, brokerage_id, brokerages(name)"
+    # Include feature_flags if the column exists; fall back cleanly if the
+    # migration hasn't been applied yet.
+    try:
+        rows = (db.table("agents").select(base + ", feature_flags")
+                .order("role").order("name").execute().data)
+    except Exception:
+        rows = (db.table("agents").select(base)
+                .order("role").order("name").execute().data)
+    for r in (rows or []):
+        r["feature_flags"] = merged_features(r.get("feature_flags"))
+    return rows
 
 
 @router.patch("/{agent_id}/role")
@@ -156,6 +191,28 @@ def update_agent_role(agent_id: str, body: RoleUpdate,
     db = get_supabase()
     db.table("agents").update({"role": body.role}).eq("id", agent_id).execute()
     return {"ok": True, "agent_id": agent_id, "role": body.role}
+
+
+@router.patch("/{agent_id}/features")
+def update_agent_feature(agent_id: str, body: FeatureUpdate,
+                         jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """Admin-only: toggle a single per-user feature flag on/off."""
+    _require_admin(jwt_agent_id)
+    if body.feature not in FEATURE_DEFAULTS:
+        raise HTTPException(status_code=400, detail=f"Unknown feature '{body.feature}'")
+    db = get_supabase()
+    try:
+        row = db.table("agents").select("feature_flags").eq("id", agent_id).single().execute()
+        flags = (row.data or {}).get("feature_flags") or {}
+        flags[body.feature] = bool(body.enabled)
+        db.table("agents").update({"feature_flags": flags}).eq("id", agent_id).execute()
+    except Exception:
+        # The most likely cause is the feature_flags column not existing yet.
+        raise HTTPException(
+            status_code=503,
+            detail="Feature-flag storage isn't ready. Apply migration 007_feature_flags.sql in Supabase.",
+        )
+    return {"ok": True, "agent_id": agent_id, "features": merged_features(flags)}
 
 
 @router.get("/team")

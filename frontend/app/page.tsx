@@ -29,7 +29,8 @@ function StatCard({ label, value, delta }: { label: string; value: string; delta
 }
 
 export default function Dashboard() {
-  const { agentId: AGENT_ID } = useAuth();
+  const { agentId: AGENT_ID, features } = useAuth();
+  const coaching = features.call_coaching;
   // Cached via SWR — revisiting the dashboard shows data instantly, then revalidates.
   const { data: calls = [] } = useSWR<Call[]>(
     AGENT_ID ? ["calls", AGENT_ID] : null,
@@ -67,7 +68,7 @@ export default function Dashboard() {
       <div className="border-b border-warm-border pb-6">
         <h1 className="text-4xl font-serif font-bold text-charcoal leading-tight">
           {greeting}.{" "}
-          {needsAttention > 0 && (
+          {coaching && needsAttention > 0 && (
             <span className="italic text-brand">
               {needsAttention} call{needsAttention > 1 ? "s" : ""} need{needsAttention === 1 ? "s" : ""} your attention.
             </span>
@@ -77,15 +78,17 @@ export default function Dashboard() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-warm-border border border-warm-border">
+      <div className={`grid grid-cols-2 ${coaching ? "md:grid-cols-4" : "md:grid-cols-3"} gap-px bg-warm-border border border-warm-border`}>
         <StatCard label="Total Calls" value={String(stats?.total_calls ?? "—")} delta={thisWeek > 0 ? `${thisWeek} this week` : undefined} />
-        <StatCard label="Avg Score"   value={stats?.average_score != null ? `${stats.average_score}` : "—"} delta="out of 100" />
+        {coaching && (
+          <StatCard label="Avg Score"   value={stats?.average_score != null ? `${stats.average_score}` : "—"} delta="out of 100" />
+        )}
         <StatCard label="Call Types"  value={String(Object.keys(stats?.by_type ?? {}).length)} delta="categories tracked" />
         <StatCard label="This Week"   value={String(thisWeek)} delta="calls recorded" />
       </div>
 
       {/* Coaching insights panel */}
-      {insights && insights.total_complete > 0 && (
+      {coaching && insights && insights.total_complete > 0 && (
         <div className="bg-white border border-warm-border p-6">
           <p className="text-[10px] tracking-widest uppercase text-muted mb-4">Coaching Insights</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -150,7 +153,7 @@ export default function Dashboard() {
       )}
 
       {/* Score trend */}
-      {trendData.length >= 2 && (
+      {coaching && trendData.length >= 2 && (
         <div className="bg-white border border-warm-border p-6">
           <div className="flex items-center justify-between mb-5">
             <p className="text-[10px] tracking-widest uppercase text-muted">Score Trend</p>
@@ -189,7 +192,7 @@ export default function Dashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-4">
-                <ScoreBadge score={call.overall_score} status={call.status} />
+                {coaching && <ScoreBadge score={call.overall_score} status={call.status} />}
                 <span className="text-xs text-muted">{new Date(call.created_at).toLocaleDateString()}</span>
               </div>
             </Link>

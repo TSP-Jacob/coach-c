@@ -8,16 +8,16 @@ import { useAuth } from "@/lib/auth";
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; roles?: string[] };
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; roles?: string[]; feature?: string };
 
 const nav: NavItem[] = [
   { href: "/",             label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/leads",        label: "Leads",        icon: UserPlus },
+  { href: "/leads",        label: "Leads",        icon: UserPlus,      feature: "leads" },
   { href: "/calls",        label: "Calls",        icon: Phone },
   { href: "/clients",      label: "Clients",      icon: Contact },
-  { href: "/chat",         label: "Assistant",    icon: MessageSquare },
+  { href: "/chat",         label: "Assistant",    icon: MessageSquare, feature: "voice_assistant" },
   { href: "/agents",       label: "Agents",       icon: Users },
-  { href: "/notes",        label: "Notes",        icon: NotebookPen },
+  { href: "/notes",        label: "Notes",        icon: NotebookPen,   feature: "notes" },
   { href: "/organization", label: "Organization", icon: Building2 },
   { href: "/guidelines",   label: "Guidelines",   icon: BookOpen },
   // Admin-only team management
@@ -30,8 +30,11 @@ const nav: NavItem[] = [
 
 function NavLinks({ onNav }: { onNav?: () => void }) {
   const path = usePathname();
-  const { role } = useAuth();
-  const visible = nav.filter(item => !item.roles || (role != null && item.roles.includes(role)));
+  const { role, features } = useAuth();
+  const visible = nav.filter(item =>
+    (!item.roles || (role != null && item.roles.includes(role))) &&
+    (!item.feature || features[item.feature] !== false)
+  );
   return (
     <nav className="flex-1 px-4 py-6 space-y-0.5">
       {visible.map(({ href, label, icon: Icon }) => (
@@ -66,7 +69,7 @@ export default function Sidebar() {
       <aside className="hidden md:flex w-52 bg-sidebar border-r border-warm-border flex-col shrink-0">
         <div className="px-6 py-6 border-b border-warm-border">
           <span className="text-xl font-serif font-bold text-charcoal">Coach-C</span>
-          <span className="text-[10px] text-muted block mt-0.5 tracking-widest uppercase">by Propria Systems</span>
+          <span className="text-[10px] text-muted block mt-0.5 tracking-widest uppercase">by Chardin Systems</span>
         </div>
         <NavLinks />
         <div className="px-6 py-4 border-t border-warm-border space-y-2">
@@ -78,7 +81,7 @@ export default function Sidebar() {
               <LogOut size={13} strokeWidth={1.5} /> Sign out
             </button>
           )}
-          <p className="text-xs text-muted">Propria Systems © 2025</p>
+          <p className="text-xs text-muted">Chardin Systems © 2025</p>
         </div>
       </aside>
 
@@ -111,7 +114,7 @@ export default function Sidebar() {
                   <LogOut size={13} strokeWidth={1.5} /> Sign out
                 </button>
               )}
-              <p className="text-xs text-muted">Propria Systems © 2025</p>
+              <p className="text-xs text-muted">Chardin Systems © 2025</p>
             </div>
           </aside>
         </div>

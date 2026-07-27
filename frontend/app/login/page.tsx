@@ -67,7 +67,7 @@ export default function LoginPage() {
         {/* Branding */}
         <div className="text-center mb-10">
           <h1 className="font-serif font-bold text-4xl text-charcoal tracking-tight">Coach-C</h1>
-          <p className="text-xs text-muted mt-2 tracking-widest uppercase">by Propria Systems</p>
+          <p className="text-xs text-muted mt-2 tracking-widest uppercase">by Chardin Systems</p>
         </div>
 
         {/* Card */}

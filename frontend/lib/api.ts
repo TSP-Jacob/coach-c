@@ -90,6 +90,10 @@ export const api = {
     listAll: () => req<AdminAgent[]>(`/api/agents/all`),
     updateRole: (id: string, role: string) =>
       req<{ ok: boolean; role: string }>(`/api/agents/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+    // Admin: toggle a single per-user feature flag
+    updateFeature: (id: string, feature: string, enabled: boolean) =>
+      req<{ ok: boolean; features: Record<string, boolean> }>(
+        `/api/agents/${id}/features`, { method: "PATCH", body: JSON.stringify({ feature, enabled }) }),
     getClient: (clientId: string) => req<Client>(`/api/agents/clients/${clientId}`),
     listClients: (agentId: string) => req<Client[]>(`/api/agents/${agentId}/clients`),
     createClient: (body: Partial<Client>) =>
@@ -178,6 +182,7 @@ export interface CoachingReport {
 export interface Agent {
   id: string; name: string; email: string; brokerage_id: string;
   brokerages?: { name: string };
+  feature_flags?: Record<string, boolean>;
 }
 
 export interface AdminAgent {
@@ -185,6 +190,7 @@ export interface AdminAgent {
   role: "admin" | "manager" | "employee";
   brokerage_id: string;
   brokerages?: { name: string } | null;
+  feature_flags?: Record<string, boolean>;
 }
 
 export interface TeamMember {

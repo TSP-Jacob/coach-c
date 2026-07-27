@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { api, Agent, Call, Client } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import CoachingReport from "@/components/CoachingReport";
 import TranscriptViewer from "@/components/TranscriptViewer";
@@ -48,6 +49,7 @@ function ScoreRing({ score }: { score: number }) {
 
 export default function CallDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { features } = useAuth();
   const [call,    setCall]    = useState<Call | null>(null);
   const [client,  setClient]  = useState<Client | null>(null);
   const [agents,  setAgents]  = useState<Agent[]>([]);
@@ -139,8 +141,8 @@ export default function CallDetailPage() {
               )}
             </div>
           </div>
-          {call.overall_score != null && <ScoreRing score={call.overall_score} />}
-          {call.overall_score == null && isProcessing && (
+          {features.call_coaching && call.overall_score != null && <ScoreRing score={call.overall_score} />}
+          {features.call_coaching && call.overall_score == null && isProcessing && (
             <div className="shrink-0 flex flex-col items-center gap-1">
               <Loader2 size={28} className="animate-spin text-brand" />
               <p className="text-[10px] uppercase tracking-widest text-muted">Analyzing</p>
@@ -195,24 +197,31 @@ export default function CallDetailPage() {
       )}
 
       {call.status === "complete" && (
-        <>
-          <div className="flex gap-0 border-b border-warm-border">
-            {(["report", "transcript"] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`pb-3 px-1 mr-6 text-sm transition-colors capitalize border-b-2 ${
-                  tab === t
-                    ? "border-charcoal text-charcoal font-medium"
-                    : "border-transparent text-muted hover:text-charcoal"
-                }`}>
-                {t === "report" ? "Coaching Report" : "Transcript"}
-              </button>
-            ))}
-          </div>
-          {tab === "report"     && call.coaching_report && <CoachingReport report={call.coaching_report} />}
-          {tab === "transcript" && call.transcript      && (
+        features.call_coaching ? (
+          <>
+            <div className="flex gap-0 border-b border-warm-border">
+              {(["report", "transcript"] as const).map(t => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`pb-3 px-1 mr-6 text-sm transition-colors capitalize border-b-2 ${
+                    tab === t
+                      ? "border-charcoal text-charcoal font-medium"
+                      : "border-transparent text-muted hover:text-charcoal"
+                  }`}>
+                  {t === "report" ? "Coaching Report" : "Transcript"}
+                </button>
+              ))}
+            </div>
+            {tab === "report"     && call.coaching_report && <CoachingReport report={call.coaching_report} />}
+            {tab === "transcript" && call.transcript      && (
+              <TranscriptViewer utterances={call.transcript.utterances} realtorSpeaker={call.realtor_speaker} />
+            )}
+          </>
+        ) : (
+          // Coaching disabled for this user — show the transcript only.
+          call.transcript && (
             <TranscriptViewer utterances={call.transcript.utterances} realtorSpeaker={call.realtor_speaker} />
-          )}
-        </>
+          )
+        )
       )}
     </div>
   );

@@ -55,7 +55,7 @@ function passesScore(call: Call, filter: string): boolean {
 }
 
 export default function CallsPage() {
-  const { agentId: AGENT_ID } = useAuth();
+  const { agentId: AGENT_ID, features } = useAuth();
   // SWR-cached: instant on revisit, shares the "calls" cache with the dashboard.
   const { data: calls = [], mutate: reloadCalls } = useSWR<Call[]>(
     AGENT_ID ? ["calls", AGENT_ID] : null,
@@ -148,10 +148,12 @@ export default function CallsPage() {
             {DATE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
 
-          <select value={scoreFilter} onChange={e => setScoreFilter(e.target.value)}
-            className="px-3 py-2 text-xs border border-warm-border bg-white focus:outline-none focus:border-brand appearance-none transition-colors">
-            {SCORE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          {features.call_coaching && (
+            <select value={scoreFilter} onChange={e => setScoreFilter(e.target.value)}
+              className="px-3 py-2 text-xs border border-warm-border bg-white focus:outline-none focus:border-brand appearance-none transition-colors">
+              {SCORE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
 
           {hasActiveFilter && (
             <button onClick={clearFilters}
@@ -206,9 +208,11 @@ export default function CallsPage() {
                 </Link>
               </div>
               <div className="flex items-center gap-4 shrink-0 ml-4">
-                <Link href={`/calls/${call.id}`}>
-                  <ScoreBadge score={call.overall_score} status={call.status} />
-                </Link>
+                {features.call_coaching && (
+                  <Link href={`/calls/${call.id}`}>
+                    <ScoreBadge score={call.overall_score} status={call.status} />
+                  </Link>
+                )}
                 <button onClick={e => remove(call.id, e)}
                   className="text-warm-border hover:text-brand opacity-0 group-hover:opacity-100 transition-all">
                   <Trash2 size={14} />

@@ -16,29 +16,47 @@ export function getExtToken(): string | null {
   return sessionStorage.getItem("ext_token");
 }
 
+export type Features = Record<string, boolean>;
+
+// Client-side defaults, mirrored from the backend's FEATURE_DEFAULTS. These
+// apply until /api/agents/me responds, and fill in any key the server omits —
+// so call coaching stays hidden by default even if the backend/DB haven't been
+// updated yet.
+export const FEATURE_DEFAULTS: Features = {
+  call_coaching: false,
+  leads: true,
+  voice_assistant: true,
+  notes: true,
+};
+
+function mergeFeatures(f?: Features | null): Features {
+  return { ...FEATURE_DEFAULTS, ...(f || {}) };
+}
+
 interface AuthCtx {
   session: Session | null;
   agentId: string | null;
   role: string | null;
+  features: Features;
   loading: boolean;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthCtx>({
-  session: null, agentId: null, role: null, loading: true,
+  session: null, agentId: null, role: null, features: FEATURE_DEFAULTS, loading: true,
   signOut: async () => {},
 });
 
-async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null }> {
+async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null; features: Features }> {
   try {
     const res = await fetch(`${BASE}/api/agents/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return { id: null, role: null };
+    if (!res.ok) return { id: null, role: null, features: FEATURE_DEFAULTS };
     const data = await res.json();
-    return { id: data.id ?? null, role: data.role ?? null };
+    return { id: data.id ?? null, role: data.role ?? null, features: mergeFeatures(data.feature_flags) };
   } catch {
-    return { id: null, role: null };
+    return { id: null, role: null, features: FEATURE_DEFAULTS };
   }
 }
 
@@ -46,6 +64,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [agentId, setAgentId] = useState<string | null>(SKIP_AUTH ? DEMO_AGENT_ID : null);
   const [role, setRole] = useState<string | null>(null);
+  // In SKIP_AUTH dev mode, turn everything on (including coaching) so the full
+  // UI is visible without a backend.
+  const [features, setFeatures] = useState<Features>(
+    SKIP_AUTH ? { ...FEATURE_DEFAULTS, call_coaching: true } : FEATURE_DEFAULTS
+  );
   const [loading, setLoading] = useState(!SKIP_AUTH);
 
   useEffect(() => {
@@ -57,9 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const extToken = urlToken || getExtToken();
     if (extToken) {
-      fetchAgent(extToken).then(({ id, role }) => {
+      fetchAgent(extToken).then(({ id, role, features }) => {
         setAgentId(id);
         setRole(role);
+        setFeatures(features);
         setLoading(false);
       });
       return;
@@ -68,9 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session?.access_token) {
-        const { id, role } = await fetchAgent(session.access_token);
+        const { id, role, features } = await fetchAgent(session.access_token);
         setAgentId(id);
         setRole(role);
+        setFeatures(features);
       }
       setLoading(false);
     });
@@ -78,12 +103,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
       setSession(session);
       if (session?.access_token) {
-        const { id, role } = await fetchAgent(session.access_token);
+        const { id, role, features } = await fetchAgent(session.access_token);
         setAgentId(id);
         setRole(role);
+        setFeatures(features);
       } else {
         setAgentId(null);
         setRole(null);
+        setFeatures(FEATURE_DEFAULTS);
       }
     });
 
@@ -92,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      session, agentId, role, loading,
+      session, agentId, role, features, loading,
       signOut: async () => {
       if (typeof window === "undefined") { await supabase.auth.signOut(); return; }
 

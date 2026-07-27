@@ -12,7 +12,8 @@ const roleBadge: Record<string, string> = {
 };
 
 export default function AgentsPage() {
-  const { agentId, loading: authLoading } = useAuth();
+  const { agentId, features, loading: authLoading } = useAuth();
+  const coaching = features.call_coaching;
   // SWR-cached; the global config revalidates on focus/navigation, which is
   // plenty fresh for a rarely-changing team roster.
   const { data: team = [], isLoading } = useSWR(!authLoading ? ["team"] : null, () => api.agents.team().catch(() => []));
@@ -34,10 +35,10 @@ export default function AgentsPage() {
 
       {/* Org roll-up */}
       {!loading && team.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className={`grid ${coaching ? "grid-cols-3" : "grid-cols-2"} gap-4`}>
           <Stat label="Team Members" value={String(team.length)} />
           <Stat label="Total Calls" value={String(totalCalls)} />
-          <Stat label="Avg Score" value={orgAvg != null ? `${orgAvg}/100` : "—"} />
+          {coaching && <Stat label="Avg Score" value={orgAvg != null ? `${orgAvg}/100` : "—"} />}
         </div>
       )}
 
@@ -67,10 +68,12 @@ export default function AgentsPage() {
                 <Phone size={14} />
                 <span>{m.total_calls} calls</span>
               </div>
-              <div className="flex items-center gap-2 text-gray-500">
-                <TrendingUp size={14} />
-                <span>{m.average_score != null ? `${m.average_score}/100` : "—"}</span>
-              </div>
+              {coaching && (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <TrendingUp size={14} />
+                  <span>{m.average_score != null ? `${m.average_score}/100` : "—"}</span>
+                </div>
+              )}
               <span className="text-gray-300">›</span>
             </div>
           </Link>

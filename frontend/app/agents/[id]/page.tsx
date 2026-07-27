@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { api, Agent, AgentStats, Call, Client } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import ScoreBadge from "@/components/ScoreBadge";
 import Link from "next/link";
 import { Phone, Plus, ChevronRight, Calendar, CheckCircle, XCircle, Loader2, ExternalLink, Copy, Check } from "lucide-react";
@@ -170,6 +171,8 @@ function CalendarTab({ agentId }: { agentId: string }) {
 
 export default function AgentDetailPage() {
   const { id }     = useParams<{ id: string }>();
+  const { features } = useAuth();
+  const coaching = features.call_coaching;
   const searchParams = useSearchParams();
   const [agent,  setAgent]  = useState<Agent | null>(null);
   const [stats,  setStats]  = useState<AgentStats | null>(null);
@@ -205,10 +208,10 @@ export default function AgentDetailPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className={`grid ${coaching ? "grid-cols-3" : "grid-cols-2"} gap-4`}>
         {[
           { label: "Total Calls", value: String(stats?.total_calls ?? 0) },
-          { label: "Avg Score",   value: stats?.average_score != null ? `${stats.average_score}/100` : "—" },
+          ...(coaching ? [{ label: "Avg Score", value: stats?.average_score != null ? `${stats.average_score}/100` : "—" }] : []),
           { label: "Clients",     value: String(clients.length) },
         ].map(({ label, value }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
@@ -246,7 +249,7 @@ export default function AgentDetailPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <ScoreBadge score={call.overall_score} status={call.status} />
+                {coaching && <ScoreBadge score={call.overall_score} status={call.status} />}
                 <ChevronRight size={14} className="text-gray-300" />
               </div>
             </Link>
