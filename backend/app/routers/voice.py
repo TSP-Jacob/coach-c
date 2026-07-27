@@ -47,32 +47,31 @@ def _system_instruction(agent_name: str, tz_name: str | None, recent_context: st
     )
     if recent_context:
         base += (
-            "\n\nFor quick reference, here are the agent's 10 MOST RECENT calls "
-            "ONLY. This is NOT the full history — older calls and many clients "
-            "are not shown here:\n"
+            "\n\nBelow are the agent's recent records — their calls, clients, and "
+            "notes. Treat this as your working memory: answer directly and "
+            "conversationally from it, with NO lookup delay, whenever the answer "
+            "is here.\n\n"
             f"{recent_context}\n\n"
-            "How to use this list:\n"
-            "- You may answer directly from it ONLY when the question is clearly "
-            "about these recent calls and the answer is fully present above.\n"
-            "- You MUST call the tools (search_calls, get_client_history, "
-            "search_notes) whenever the user names a specific person, asks about "
-            "an older or specific date, asks about anything before the earliest "
-            "call listed above, or asks about their full/complete/entire history "
-            "— even if you think you already know the answer from this list.\n"
-            "- CRITICAL: never tell the user a client, call, or detail does not "
-            "exist based on this list alone. Before saying something was not "
-            "found, you MUST call a tool to search the full records, and only "
-            "report it as not found if the tool itself returns nothing. "
+            "If the user asks about something NOT in the records above — an older "
+            "call, a client not listed, a full transcript, or a keyword search — "
+            "use the tools (search_calls, get_client_history, search_notes) to "
+            "look it up. Whenever you call a tool, FIRST say a short, natural "
+            "filler out loud like 'let me pull that up' or 'one sec' so there is "
+            "never dead silence, then look it up and answer. "
+            "Never tell the user something doesn't exist based only on the list "
+            "above — if it isn't there, check with a tool first, and only say "
+            "it's not found if the tool returns nothing. "
         )
     else:
         base += (
             "When the user asks about past calls, clients, offers, scores, or "
-            "dates, you MUST call the provided tools to look up real records "
-            "before answering. "
+            "dates, briefly say you're looking it up, then call the provided "
+            "tools to fetch real records before answering. "
         )
     base += (
-        "Never invent client names, dates, or details. When you reference a "
-        "specific call, mention the client and the date."
+        "Never invent client names, dates, or details. Keep replies natural and "
+        "brief, like a phone conversation, and mention the client and date when "
+        "you reference a specific call."
     )
     return base
 
@@ -161,6 +160,9 @@ async def voice_live(ws: WebSocket):
         "response_modalities": ["AUDIO"],
         "input_audio_transcription": {},
         "output_audio_transcription": {},
+        # Native-audio: respond to the user's tone for more natural, less robotic
+        # turn-taking (proactivity isn't supported on this model yet).
+        "enable_affective_dialog": True,
         "system_instruction": _system_instruction(agent_name, tz_name, recent_context),
         "tools": [{"function_declarations": TOOL_DECLARATIONS}],
         # Turn-taking: respond sooner after the user stops talking. The model's

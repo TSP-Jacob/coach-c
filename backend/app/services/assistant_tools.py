@@ -323,35 +323,75 @@ _DISPATCH = {
 }
 
 
-def build_recent_context(db, agent_id: str, tz_name: str | None = None, limit: int = 10) -> str:
-    """A compact digest of the agent's most recent calls, to pre-load into the
-    voice system prompt so common recall questions ("my last call", "recent
-    calls", "how did I do lately") are answered instantly — with no tool
-    round-trip. Deeper/specific lookups still fall through to the tools."""
+def build_recent_context(
+    db, agent_id: str, tz_name: str | None = None,
+    calls_limit: int = 40, clients_limit: int = 80, notes_limit: int = 25,
+) -> str:
+    """Pre-load the agent's working set — recent calls, clients, and notes —
+    into the voice system prompt so the assistant answers conversationally from
+    memory with no mid-conversation database round-trip (which is what makes the
+    voice feel slow/turn-based). Tools remain as a fallback for anything beyond
+    what's listed here (older calls, a full transcript, keyword search)."""
+    sections: list[str] = []
+
+    # ── Calls ──
     try:
-        rows = (
+        calls = (
             db.table("calls")
             .select("call_date, call_type, overall_score, coaching_report, created_at, clients(name)")
-            .eq("agent_id", agent_id)
-            .eq("status", "complete")
-            .order("created_at", desc=True)
-            .limit(limit)
-            .execute()
-            .data
-            or []
+            .eq("agent_id", agent_id).eq("status", "complete")
+            .order("created_at", desc=True).limit(calls_limit).execute().data or []
         )
     except Exception:
-        return ""
-    lines = []
-    for c in rows:
-        client = (c.get("clients") or {}).get("name") or "Unknown client"
-        date = _fmt_date(c.get("call_date") or c.get("created_at"), tz_name)
-        ctype = (c.get("call_type") or "unknown").replace("_", " ")
-        score = c.get("overall_score")
-        summary = _call_summary(c.get("coaching_report"))[:140].strip()
-        score_str = f"{score}/100" if score is not None else "no score"
-        lines.append(f"- {client} | {date} | {ctype} | {score_str}" + (f" | {summary}" if summary else ""))
-    return "\n".join(lines)
+        calls = []
+    if calls:
+        lines = []
+        for c in calls:
+            client = (c.get("clients") or {}).get("name") or "Unknown client"
+            date = _fmt_date(c.get("call_date") or c.get("created_at"), tz_name)
+            ctype = (c.get("call_type") or "unknown").replace("_", " ")
+            score = c.get("overall_score")
+            score_str = f"{score}/100" if score is not None else "no score"
+            summary = _call_summary(c.get("coaching_report"))[:160].strip()
+            lines.append(f"- {client} | {date} | {ctype} | {score_str}" + (f" | {summary}" if summary else ""))
+        sections.append("RECENT CALLS (newest first):\n" + "\n".join(lines))
+
+    # ── Clients ──
+    try:
+        clients = (
+            db.table("clients").select("name, type, phone, email")
+            .eq("agent_id", agent_id).order("created_at", desc=True).limit(clients_limit).execute().data or []
+        )
+    except Exception:
+        clients = []
+    if clients:
+        lines = []
+        for cl in clients:
+            name = cl.get("name") or "Unknown"
+            ctype = cl.get("type")
+            contact = cl.get("phone") or cl.get("email")
+            lines.append(f"- {name}" + (f" ({ctype})" if ctype else "") + (f" — {contact}" if contact else ""))
+        sections.append("CLIENTS ON FILE:\n" + "\n".join(lines))
+
+    # ── Notes ──
+    try:
+        notes = (
+            db.table("notes").select("content, created_at, clients(name)")
+            .eq("agent_id", agent_id).order("created_at", desc=True).limit(notes_limit).execute().data or []
+        )
+    except Exception:
+        notes = []
+    if notes:
+        lines = []
+        for n in notes:
+            who = (n.get("clients") or {}).get("name")
+            content = (n.get("content") or "").strip()[:200]
+            if content:
+                lines.append("- " + (f"{who}: " if who else "") + content)
+        if lines:
+            sections.append("RECENT NOTES:\n" + "\n".join(lines))
+
+    return "\n\n".join(sections)
 
 
 def execute_tool(db, agent_id: str, name: str, args: dict, tz_name: str | None = None) -> dict:
