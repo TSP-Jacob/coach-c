@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { IndustryMode, DEFAULT_MODE, normalizeMode } from "./industry";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
@@ -38,25 +39,32 @@ interface AuthCtx {
   agentId: string | null;
   role: string | null;
   features: Features;
+  industryMode: IndustryMode;
   loading: boolean;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthCtx>({
-  session: null, agentId: null, role: null, features: FEATURE_DEFAULTS, loading: true,
+  session: null, agentId: null, role: null, features: FEATURE_DEFAULTS,
+  industryMode: DEFAULT_MODE, loading: true,
   signOut: async () => {},
 });
 
-async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null; features: Features }> {
+async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null; features: Features; industryMode: IndustryMode }> {
   try {
     const res = await fetch(`${BASE}/api/agents/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return { id: null, role: null, features: FEATURE_DEFAULTS };
+    if (!res.ok) return { id: null, role: null, features: FEATURE_DEFAULTS, industryMode: DEFAULT_MODE };
     const data = await res.json();
-    return { id: data.id ?? null, role: data.role ?? null, features: mergeFeatures(data.feature_flags) };
+    return {
+      id: data.id ?? null,
+      role: data.role ?? null,
+      features: mergeFeatures(data.feature_flags),
+      industryMode: normalizeMode(data.brokerages?.industry_mode),
+    };
   } catch {
-    return { id: null, role: null, features: FEATURE_DEFAULTS };
+    return { id: null, role: null, features: FEATURE_DEFAULTS, industryMode: DEFAULT_MODE };
   }
 }
 
@@ -69,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [features, setFeatures] = useState<Features>(
     SKIP_AUTH ? { ...FEATURE_DEFAULTS, call_coaching: true } : FEATURE_DEFAULTS
   );
+  const [industryMode, setIndustryMode] = useState<IndustryMode>(DEFAULT_MODE);
   const [loading, setLoading] = useState(!SKIP_AUTH);
 
   useEffect(() => {
@@ -80,10 +89,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const extToken = urlToken || getExtToken();
     if (extToken) {
-      fetchAgent(extToken).then(({ id, role, features }) => {
+      fetchAgent(extToken).then(({ id, role, features, industryMode }) => {
         setAgentId(id);
         setRole(role);
         setFeatures(features);
+        setIndustryMode(industryMode);
         setLoading(false);
       });
       return;
@@ -92,10 +102,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session?.access_token) {
-        const { id, role, features } = await fetchAgent(session.access_token);
+        const { id, role, features, industryMode } = await fetchAgent(session.access_token);
         setAgentId(id);
         setRole(role);
         setFeatures(features);
+        setIndustryMode(industryMode);
       }
       setLoading(false);
     });
@@ -103,14 +114,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
       setSession(session);
       if (session?.access_token) {
-        const { id, role, features } = await fetchAgent(session.access_token);
+        const { id, role, features, industryMode } = await fetchAgent(session.access_token);
         setAgentId(id);
         setRole(role);
         setFeatures(features);
+        setIndustryMode(industryMode);
       } else {
         setAgentId(null);
         setRole(null);
         setFeatures(FEATURE_DEFAULTS);
+        setIndustryMode(DEFAULT_MODE);
       }
     });
 
@@ -119,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      session, agentId, role, features, loading,
+      session, agentId, role, features, industryMode, loading,
       signOut: async () => {
       if (typeof window === "undefined") { await supabase.auth.signOut(); return; }
 

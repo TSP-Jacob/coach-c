@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { getExtToken } from "./auth";
+import { IndustryMode } from "./industry";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
@@ -237,7 +238,7 @@ export interface OrgProfile {
   id: string;
   name: string;
   primary_contact?: string;
-  industry?: string;
+  industry_mode?: IndustryMode;
   email?: string;
   agent_role?: string; // only present on GET /organization/
 }

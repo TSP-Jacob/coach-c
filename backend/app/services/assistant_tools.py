@@ -100,7 +100,118 @@ TOOL_DECLARATIONS: list[dict] = [
             "required": ["keyword"],
         },
     },
+    # ── Write tools ───────────────────────────────────────────────────────────
+    # These CHANGE the database. Only call them after confirming with the user
+    # (see the action instructions in the system prompt).
+    {
+        "name": "find_client",
+        "description": (
+            "Look up whether a client already exists before creating one or "
+            "adding a note. Use this to check for an existing profile and to "
+            "disambiguate when a name is partial. Returns matching clients with "
+            "their id, contact info and how many notes they have."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Full or partial client name to look up.",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "create_client",
+        "description": (
+            "Create a new client profile. ONLY call after you have the client's "
+            "name and the user has confirmed this is a new client and confirmed "
+            "the details. If a client with the same name already exists this "
+            "returns the existing match instead of creating a duplicate — ask "
+            "the user how to proceed."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The client's full name (required).",
+                },
+                "phone": {"type": "string", "description": "Phone number, if known."},
+                "email": {"type": "string", "description": "Email, if known."},
+                "type": {
+                    "type": "string",
+                    "description": "One of: buyer, seller, both. Defaults to buyer if unsure.",
+                },
+                "initial_note": {
+                    "type": "string",
+                    "description": "Optional first note to save on the new client (e.g. the service just performed).",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "add_note",
+        "description": (
+            "Append a note to an existing client's record — e.g. the service "
+            "performed, what was discussed, or a follow-up. ONLY call after the "
+            "user has confirmed the note text and which client it belongs to. If "
+            "the name matches no client or more than one, this returns that so "
+            "you can ask the user."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "client_name": {
+                    "type": "string",
+                    "description": "Name of the client the note is about.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The note text to save.",
+                },
+            },
+            "required": ["client_name", "content"],
+        },
+    },
 ]
+
+
+# Instructions shared by the voice and text assistants describing how to use the
+# write tools safely and conversationally. Appended to both system prompts.
+ACTION_INSTRUCTIONS = (
+    "\n\nYou can also RECORD work for the user, not just answer questions. When "
+    "the user tells you about a job, a meeting, or a service they performed, help "
+    "them save it:\n"
+    "- If you don't know which client this is about, ASK for the client's name "
+    "before doing anything.\n"
+    "- Before creating a new client, call find_client to check whether they "
+    "already exist. If a match comes back, or you're unsure whether this is a new "
+    "or existing client, VERIFY with the user rather than assuming.\n"
+    "- If the user is just describing a service or update for a client, save it "
+    "as a note on that client with add_note (do NOT create a new profile for an "
+    "existing client).\n"
+    "- ALWAYS read back what you're about to save — the client name and the note/"
+    "profile details — and only call create_client or add_note AFTER the user "
+    "confirms. If they correct you, update and confirm again.\n"
+    "- After a successful save, briefly tell the user what was recorded."
+)
+
+
+def anthropic_tools() -> list[dict]:
+    """Map TOOL_DECLARATIONS to the Anthropic tool schema so the text-chat path
+    reuses the exact same tools as the voice assistant. Gemini's `parameters`
+    (an OpenAPI-subset object schema) is exactly Anthropic's `input_schema`."""
+    return [
+        {
+            "name": t["name"],
+            "description": t["description"],
+            "input_schema": t.get("parameters") or {"type": "object", "properties": {}},
+        }
+        for t in TOOL_DECLARATIONS
+    ]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -315,11 +426,143 @@ def _search_notes(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     }
 
 
+# ── Write tool implementations ────────────────────────────────────────────────
+def _index_note_best_effort(client_id: str, content: str) -> None:
+    """Feed a new note into the RAG index so text-chat retrieval can surface it.
+    Never let indexing (embeddings, optional deps) sink the actual save."""
+    try:
+        from app.services.rag import index_client_notes
+        index_client_notes(client_id, content)
+    except Exception:
+        pass
+
+
+def _clients_for_name(db, agent_id: str, name: str) -> list[dict]:
+    """Full client rows matching a (partial) name, scoped to the agent."""
+    return (
+        db.table("clients")
+        .select("id, name, phone, email, type")
+        .eq("agent_id", agent_id)
+        .ilike("name", f"%{name}%")
+        .execute()
+        .data
+        or []
+    )
+
+
+def _find_client(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
+    name = (args.get("name") or "").strip()
+    if not name:
+        return {"error": "name is required."}
+    rows = _clients_for_name(db, agent_id, name)
+    out = []
+    for c in rows:
+        try:
+            n = (
+                db.table("notes").select("id", count="exact")
+                .eq("agent_id", agent_id).eq("client_id", c["id"]).execute().count
+            )
+        except Exception:
+            n = None
+        out.append({
+            "id": c["id"], "name": c.get("name"), "phone": c.get("phone"),
+            "email": c.get("email"), "type": c.get("type"), "note_count": n,
+        })
+    return {"count": len(out), "clients": out}
+
+
+def _create_client(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
+    name = (args.get("name") or "").strip()
+    if not name:
+        return {"created": False, "error": "A client name is required — ask the user for it."}
+
+    # Duplicate guard: don't silently create a second profile for the same name.
+    existing = _clients_for_name(db, agent_id, name)
+    exact = [c for c in existing if (c.get("name") or "").strip().lower() == name.lower()]
+    if exact:
+        return {
+            "created": False,
+            "reason": "A client with this name already exists.",
+            "existing": [
+                {"id": c["id"], "name": c.get("name"), "phone": c.get("phone"), "type": c.get("type")}
+                for c in exact
+            ],
+        }
+
+    ctype = (args.get("type") or "buyer").strip().lower()
+    if ctype not in ("buyer", "seller", "both"):
+        ctype = "buyer"
+    payload = {
+        "agent_id": agent_id,
+        "name": name,
+        "phone": (args.get("phone") or None),
+        "email": (args.get("email") or None),
+        "type": ctype,
+    }
+    try:
+        client = db.table("clients").insert(payload).execute().data[0]
+    except Exception as exc:
+        return {"created": False, "error": f"Could not create client: {exc}"}
+
+    result = {"created": True, "client": {"id": client["id"], "name": client.get("name")}}
+
+    note = (args.get("initial_note") or "").strip()
+    if note:
+        try:
+            db.table("notes").insert({
+                "agent_id": agent_id, "client_id": client["id"], "content": note,
+            }).execute()
+            _index_note_best_effort(client["id"], note)
+            result["note_saved"] = True
+        except Exception as exc:
+            result["note_saved"] = False
+            result["note_error"] = str(exc)
+    return result
+
+
+def _add_note(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
+    name = (args.get("client_name") or "").strip()
+    content = (args.get("content") or "").strip()
+    if not name:
+        return {"saved": False, "error": "A client name is required — ask the user which client."}
+    if not content:
+        return {"saved": False, "error": "Note content is required."}
+
+    matches = _clients_for_name(db, agent_id, name)
+    if not matches:
+        return {
+            "saved": False, "status": "not_found",
+            "note": f"No client matching '{name}'. Ask the user, or create the client first.",
+        }
+    # Prefer an exact name match if the partial matched several.
+    exact = [c for c in matches if (c.get("name") or "").strip().lower() == name.lower()]
+    candidates = exact or matches
+    if len(candidates) > 1:
+        return {
+            "saved": False, "status": "ambiguous",
+            "candidates": [{"id": c["id"], "name": c.get("name"), "phone": c.get("phone")} for c in candidates],
+            "note": "Several clients match — ask the user which one.",
+        }
+
+    client = candidates[0]
+    try:
+        db.table("notes").insert({
+            "agent_id": agent_id, "client_id": client["id"], "content": content,
+        }).execute()
+    except Exception as exc:
+        return {"saved": False, "error": f"Could not save note: {exc}"}
+    _index_note_best_effort(client["id"], content)
+    return {"saved": True, "client": {"id": client["id"], "name": client.get("name")}}
+
+
 _DISPATCH = {
     "search_calls": _search_calls,
     "get_client_history": _get_client_history,
     "list_recent_calls": _list_recent_calls,
     "search_notes": _search_notes,
+    "find_client": _find_client,
+    "create_client": _create_client,
+    "add_note": _add_note,
 }
 
 

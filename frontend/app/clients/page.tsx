@@ -3,16 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { pollWhileProcessing } from "@/lib/swr";
 import { useSearchParams } from "next/navigation";
-import { api, Call, Client, Consent } from "@/lib/api";
+import { api, Call, Client, Consent, Note } from "@/lib/api";
 import Link from "next/link";
 import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-
-const TYPE_LABEL: Record<string, string> = {
-  buyer:  "Buyer",
-  seller: "Seller",
-  both:   "Buyer & Seller",
-};
+import { clientTypeLabel, callTypeLabel } from "@/lib/industry";
 
 const CLIENT_STATUSES = [
   "Lead",
@@ -30,16 +25,6 @@ const CLIENT_STATUS_STYLE: Record<string, string> = {
   "Converted":        "text-charcoal bg-cream border-warm-border",
 };
 
-const CALL_TYPE_LABEL: Record<string, string> = {
-  prospecting:          "Prospecting",
-  buyer_consultation:   "Buyer Consult",
-  seller_listing:       "Seller Listing",
-  followup:             "Follow-Up",
-  negotiation:          "Negotiation",
-  post_closing:         "Post-Closing",
-  unknown:              "Call",
-};
-
 function scoreStyle(score: number) {
   if (score >= 80) return "text-green-700 border-green-200 bg-green-50";
   if (score >= 60) return "text-amber-600 border-amber-200 bg-amber-50";
@@ -54,13 +39,20 @@ function formatDuration(secs?: number) {
   return m > 0 ? `${m}m${s > 0 ? ` ${s}s` : ""}` : `${s}s`;
 }
 
+interface LatestActivity {
+  kind: "call" | "note";
+  text: string;
+  date: string;
+}
+
 interface ClientRow extends Client {
-  clientCalls: Call[];
-  avgScore:    number | null;
+  clientCalls:    Call[];
+  avgScore:       number | null;
+  latestActivity: LatestActivity | null;
 }
 
 export default function ClientsPage() {
-  const { agentId: AGENT_ID } = useAuth();
+  const { agentId: AGENT_ID, industryMode } = useAuth();
   const searchParams = useSearchParams();
   // SWR-cached: instant on revisit; "calls" cache is shared with the dashboard.
   const { data: clients = [], mutate: mutateClients } =
@@ -68,6 +60,8 @@ export default function ClientsPage() {
   const { data: calls = [] } =
     useSWR<Call[]>(AGENT_ID ? ["calls", AGENT_ID] : null, () => api.calls.list(AGENT_ID!),
       { refreshInterval: pollWhileProcessing });
+  const { data: notes = [] } =
+    useSWR<Note[]>(AGENT_ID ? ["notes", AGENT_ID] : null, () => api.notes.list(AGENT_ID!));
   const { data: agents = [] } =
     useSWR(AGENT_ID ? ["agents-all"] : null, () => api.agents.list());
   const [search,     setSearch]     = useState("");
@@ -103,9 +97,32 @@ export default function ClientsPage() {
       const avgScore = completedCalls.length
         ? Math.round(completedCalls.reduce((s, c) => s + c.overall_score!, 0) / completedCalls.length)
         : null;
-      return { ...client, clientCalls, avgScore };
+
+      // "Latest Summary" is the most recent of a call analysis or a note — so a
+      // service update logged as a note shows up even when there's no call.
+      const clientNotes = notes.filter(n => n.client_id === client.id);
+      const candidates: LatestActivity[] = [];
+      const latestSummarizedCall = clientCalls.find(c => c.coaching_report?.summary);
+      if (latestSummarizedCall) {
+        candidates.push({
+          kind: "call",
+          text: latestSummarizedCall.coaching_report!.summary!,
+          date: latestSummarizedCall.call_date || latestSummarizedCall.created_at,
+        });
+      }
+      const latestNote = clientNotes
+        .slice()
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      if (latestNote) {
+        candidates.push({ kind: "note", text: latestNote.content, date: latestNote.created_at });
+      }
+      const latestActivity = candidates.length
+        ? candidates.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+        : null;
+
+      return { ...client, clientCalls, avgScore, latestActivity };
     });
-  }, [clients, calls]);
+  }, [clients, calls, notes]);
 
   const filtered = useMemo(() =>
     rows.filter(r =>
@@ -164,8 +181,7 @@ export default function ClientsPage() {
 
           {filtered.map(row => {
             const isOpen = expandedId === row.id;
-            const latestCall = row.clientCalls[0] ?? null;
-            const latestSummary = latestCall?.coaching_report?.summary ?? null;
+            const latestActivity = row.latestActivity;
             const assignedAgent = agents.find(a => a.id === row.agent_id);
             const statusLabel = row.client_status || "Lead";
             const statusStyle = CLIENT_STATUS_STYLE[statusLabel] ?? "text-muted border-warm-border bg-white";
@@ -180,11 +196,11 @@ export default function ClientsPage() {
                   {/* Name */}
                   <div>
                     <p className="text-sm font-medium text-charcoal">{row.name}</p>
-                    {latestSummary && !isOpen && (
-                      <p className="text-xs text-muted mt-1 leading-relaxed line-clamp-1">{latestSummary}</p>
+                    {latestActivity && !isOpen && (
+                      <p className="text-xs text-muted mt-1 leading-relaxed line-clamp-1">{latestActivity.text}</p>
                     )}
-                    {!latestSummary && row.clientCalls.length === 0 && (
-                      <p className="text-xs text-muted mt-1 italic">No calls yet</p>
+                    {!latestActivity && row.clientCalls.length === 0 && (
+                      <p className="text-xs text-muted mt-1 italic">No activity yet</p>
                     )}
                   </div>
 
@@ -193,7 +209,7 @@ export default function ClientsPage() {
                     <span className={`text-xs px-2 py-0.5 border whitespace-nowrap ${statusStyle}`}>
                       {statusLabel}
                     </span>
-                    <p className="text-xs text-muted mt-1.5">{TYPE_LABEL[row.type] ?? row.type}</p>
+                    <p className="text-xs text-muted mt-1.5">{clientTypeLabel(industryMode, row.type)}</p>
                   </div>
 
                   {/* Contact */}
@@ -293,11 +309,18 @@ export default function ClientsPage() {
 
                       {/* Latest summary */}
                       <div>
-                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Latest Summary</p>
-                        {latestSummary ? (
-                          <p className="text-sm text-charcoal leading-relaxed">{latestSummary}</p>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <p className="text-[10px] tracking-widest uppercase text-muted">Latest Summary</p>
+                          {latestActivity && (
+                            <span className="text-[9px] tracking-wide uppercase px-1.5 py-0.5 border border-warm-border bg-white text-muted">
+                              {latestActivity.kind === "note" ? "Note" : "Call"}
+                            </span>
+                          )}
+                        </div>
+                        {latestActivity ? (
+                          <p className="text-sm text-charcoal leading-relaxed">{latestActivity.text}</p>
                         ) : (
-                          <p className="text-sm text-muted italic">No call analysis yet.</p>
+                          <p className="text-sm text-muted italic">No activity yet.</p>
                         )}
                       </div>
                     </div>
@@ -332,7 +355,7 @@ export default function ClientsPage() {
                                 <PhoneCall size={13} className="text-muted shrink-0" />
                                 <div>
                                   <p className="text-sm font-medium text-charcoal group-hover:text-brand transition-colors">
-                                    {CALL_TYPE_LABEL[call.call_type ?? ""] ?? "Call"}
+                                    {callTypeLabel(industryMode, call.call_type ?? undefined)}
                                   </p>
                                   <p className="text-xs text-muted mt-0.5">
                                     {call.call_date

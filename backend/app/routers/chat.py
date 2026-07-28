@@ -6,6 +6,8 @@ from app.database import get_supabase
 from app.services.coaching import CoachingService
 from app.services.rag import retrieve_context
 from app.services.history import load_recent, save_messages
+from app.services.assistant_tools import anthropic_tools, execute_tool
+from app.services.industry import domain as industry_domain
 from app.middleware.auth import get_jwt_agent_id
 
 router = APIRouter()
@@ -77,8 +79,21 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
     except Exception:
         pass
 
-    agent = db.table("agents").select("name").eq("id", agent_id).single().execute()
+    # Tolerate the industry_mode column not existing yet (migration 008).
+    try:
+        agent = db.table("agents").select("name, brokerages(industry_mode)").eq("id", agent_id).single().execute()
+        industry_mode = (agent.data.get("brokerages") or {}).get("industry_mode") if agent.data else None
+    except Exception:
+        agent = db.table("agents").select("name").eq("id", agent_id).single().execute()
+        industry_mode = None
     agent_name = agent.data["name"] if agent.data else "the realtor"
+
+    # Let the assistant not just answer but record work — create client profiles
+    # and save notes — through the same tools the voice assistant uses. The
+    # executor closes over this request's db/agent/timezone so coaching stays
+    # DB-agnostic.
+    def tool_executor(name: str, args: dict) -> dict:
+        return execute_tool(db, agent_id, name, args, body.timezone)
 
     reply = coaching_svc.chat(
         message=body.message,
@@ -86,6 +101,9 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
         client_notes=client_notes,
         calls_context=calls_context,
         agent_name=agent_name,
+        tools=anthropic_tools(),
+        tool_executor=tool_executor,
+        industry=industry_domain(industry_mode),
     )
 
     save_messages(db, agent_id, [

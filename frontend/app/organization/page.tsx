@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api, OrgProfile } from "@/lib/api";
+import { IndustryMode, INDUSTRY_MODES, INDUSTRY_LABELS, DEFAULT_MODE } from "@/lib/industry";
 import { Building2, Save, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 
 export default function OrganizationPage() {
@@ -25,7 +26,7 @@ export default function OrganizationPage() {
     api.organization.get()
       .then(data => {
         setProfile(data);
-        setDraft({ name: data.name, primary_contact: data.primary_contact ?? "", industry: data.industry ?? "", email: data.email ?? "" });
+        setDraft({ name: data.name, primary_contact: data.primary_contact ?? "", industry_mode: data.industry_mode ?? DEFAULT_MODE, email: data.email ?? "" });
       })
       .catch(() => setError("Failed to load organization profile."))
       .finally(() => setLoading(false));
@@ -90,7 +91,8 @@ export default function OrganizationPage() {
 
         <Field label="Company Name" value={draft.name ?? ""} onChange={v => setDraft(d => ({ ...d, name: v }))} disabled={!canEdit} />
         <Field label="Primary Contact" value={draft.primary_contact ?? ""} onChange={v => setDraft(d => ({ ...d, primary_contact: v }))} disabled={!canEdit} />
-        <Field label="Industry" value={draft.industry ?? ""} onChange={v => setDraft(d => ({ ...d, industry: v }))} disabled={!canEdit} />
+        <SelectField label="Industry" value={draft.industry_mode ?? DEFAULT_MODE} onChange={v => setDraft(d => ({ ...d, industry_mode: v }))} disabled={!canEdit}
+          hint="Sets the terminology used across the app (e.g. Buyer/Seller vs. Residential/Commercial)" />
         <Field label="Organization Email" value={draft.email ?? ""} onChange={v => setDraft(d => ({ ...d, email: v }))} disabled={!canEdit}
           hint="Consent logs from Home Value will be sent to this address" />
 
@@ -120,7 +122,7 @@ export default function OrganizationPage() {
                   onClick={() => {
                     if (isEditing) { setEditingOrgId(null); return; }
                     setEditingOrgId(org.id);
-                    setAdminDraft({ name: org.name, primary_contact: org.primary_contact ?? "", industry: org.industry ?? "", email: org.email ?? "" });
+                    setAdminDraft({ name: org.name, primary_contact: org.primary_contact ?? "", industry_mode: org.industry_mode ?? DEFAULT_MODE, email: org.email ?? "" });
                   }}
                 >
                   <div>
@@ -138,7 +140,7 @@ export default function OrganizationPage() {
                   <div className="border-t border-warm-border px-5 py-5 space-y-4">
                     <Field label="Company Name"     value={adminDraft.name ?? ""}            onChange={v => setAdminDraft(d => ({ ...d, name: v }))} />
                     <Field label="Primary Contact"  value={adminDraft.primary_contact ?? ""}  onChange={v => setAdminDraft(d => ({ ...d, primary_contact: v }))} />
-                    <Field label="Industry"         value={adminDraft.industry ?? ""}          onChange={v => setAdminDraft(d => ({ ...d, industry: v }))} />
+                    <SelectField label="Industry"   value={adminDraft.industry_mode ?? DEFAULT_MODE} onChange={v => setAdminDraft(d => ({ ...d, industry_mode: v }))} />
                     <Field label="Organization Email" value={adminDraft.email ?? ""}           onChange={v => setAdminDraft(d => ({ ...d, email: v }))} />
                     <button
                       onClick={() => handleAdminSave(org.id)}
@@ -175,6 +177,30 @@ function Field({ label, value, onChange, disabled, hint }: {
         className="w-full border border-warm-border bg-white px-3 py-2.5 text-sm text-charcoal focus:outline-none focus:border-brand transition-colors disabled:bg-cream disabled:text-muted"
         placeholder={disabled ? "—" : `Enter ${label.toLowerCase()}…`}
       />
+      {hint && <p className="text-[10px] text-muted mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+function SelectField({ label, value, onChange, disabled, hint }: {
+  label: string; value: string;
+  onChange?: (v: IndustryMode) => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] tracking-widest uppercase text-muted mb-1.5">{label}</label>
+      <select
+        value={value}
+        onChange={e => onChange?.(e.target.value as IndustryMode)}
+        disabled={disabled}
+        className="w-full border border-warm-border bg-white px-3 py-2.5 text-sm text-charcoal focus:outline-none focus:border-brand transition-colors disabled:bg-cream disabled:text-muted"
+      >
+        {INDUSTRY_MODES.map(m => (
+          <option key={m} value={m}>{INDUSTRY_LABELS[m]}</option>
+        ))}
+      </select>
       {hint && <p className="text-[10px] text-muted mt-1">{hint}</p>}
     </div>
   );

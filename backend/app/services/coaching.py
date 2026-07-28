@@ -7,6 +7,12 @@ _SYSTEM_PROMPT = (Path(__file__).parent.parent / "prompts" / "coaching_system.tx
 _GUIDELINES_DIR = Path(__file__).parent.parent / "prompts" / "guidelines"
 
 
+def _text_of(response) -> str:
+    """Join the text blocks of an Anthropic message, ignoring tool_use blocks."""
+    parts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
+    return "".join(parts).strip()
+
+
 def _load_guidelines(call_type: str) -> dict:
     path = _GUIDELINES_DIR / f"{call_type}.json"
     if path.exists():
@@ -159,8 +165,13 @@ Return a JSON object with this exact structure:
         client_notes: str = "",
         calls_context: str = "",
         agent_name: str = "the realtor",
+        tools: list[dict] | None = None,
+        tool_executor=None,
+        industry: str | None = None,
     ) -> str:
         system = f"{_SYSTEM_PROMPT}\n\nYou are speaking directly with {agent_name}. Be conversational, concise, and practical."
+        if industry:
+            system += f"\n\nThis organization operates in {industry}. Use {industry} terminology (e.g. clients, jobs, services) rather than real-estate-specific terms where possible."
 
         if calls_context:
             system += f"\n\nAGENT'S CALL HISTORY (use this to answer questions about specific calls, clients, scores, and dates):\n{calls_context}"
@@ -169,10 +180,52 @@ Return a JSON object with this exact structure:
             system += f"\n\nCLIENT FILE NOTES:\n{client_notes}"
 
         messages = history[-20:] + [{"role": "user", "content": message}]
+
+        # No tools wired → single completion (original behaviour).
+        if not tools or tool_executor is None:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                system=system,
+                messages=messages,
+            )
+            return _text_of(response)
+
+        # Tool-use loop: let Claude look things up and record work (create_client,
+        # add_note, …). Cap iterations so a misbehaving loop can't run away.
+        from app.services.assistant_tools import ACTION_INSTRUCTIONS
+        system += ACTION_INSTRUCTIONS
+
+        for _ in range(6):
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                system=system,
+                messages=messages,
+                tools=tools,
+            )
+            if response.stop_reason != "tool_use":
+                return _text_of(response)
+
+            # Echo the assistant's turn back, then answer every tool_use block.
+            messages.append({"role": "assistant", "content": response.content})
+            tool_results = []
+            for block in response.content:
+                if getattr(block, "type", None) != "tool_use":
+                    continue
+                result = tool_executor(block.name, dict(block.input or {}))
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": json.dumps(result),
+                })
+            messages.append({"role": "user", "content": tool_results})
+
+        # Exhausted the loop — ask Claude for a final text answer with no tools.
         response = self.client.messages.create(
             model=self.model,
             max_tokens=1000,
             system=system,
             messages=messages,
         )
-        return response.content[0].text
+        return _text_of(response)

@@ -22,7 +22,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.config import settings
 from app.database import get_supabase
 from app.middleware.auth import resolve_agent_from_token
-from app.services.assistant_tools import TOOL_DECLARATIONS, execute_tool, build_recent_context
+from app.services.assistant_tools import (
+    ACTION_INSTRUCTIONS,
+    TOOL_DECLARATIONS,
+    build_recent_context,
+    execute_tool,
+)
+from app.services.industry import assistant_descriptor
 from app.services.history import save_messages
 
 log = logging.getLogger("voice")
@@ -35,11 +41,12 @@ INPUT_SAMPLE_RATE = 16000   # what we send Gemini
 OUTPUT_SAMPLE_RATE = 24000  # what Gemini sends back
 
 
-def _system_instruction(agent_name: str, tz_name: str | None, recent_context: str = "") -> str:
+def _system_instruction(agent_name: str, tz_name: str | None, recent_context: str = "",
+                        industry_mode: str | None = None) -> str:
     today = date.today().isoformat()
     base = (
         f"{_COACHING_PROMPT}\n\n"
-        f"You are the voice assistant for {agent_name}, a real estate agent. "
+        f"You are the voice assistant for {agent_name}, a {assistant_descriptor(industry_mode)}. "
         f"Today's date is {today}"
         + (f" ({tz_name} time). " if tz_name else ". ")
         + "You are having a spoken conversation, so keep replies natural, warm, "
@@ -73,6 +80,7 @@ def _system_instruction(agent_name: str, tz_name: str | None, recent_context: st
         "brief, like a phone conversation, and mention the client and date when "
         "you reference a specific call."
     )
+    base += ACTION_INSTRUCTIONS
     return base
 
 
@@ -134,9 +142,11 @@ async def voice_live(ws: WebSocket):
         return
 
     db = get_supabase()
+    industry_mode = None
     try:
-        agent = db.table("agents").select("name").eq("id", agent_id).single().execute()
+        agent = db.table("agents").select("name, brokerages(industry_mode)").eq("id", agent_id).single().execute()
         agent_name = agent.data["name"] if agent.data else "the agent"
+        industry_mode = (agent.data.get("brokerages") or {}).get("industry_mode") if agent.data else None
     except Exception:
         agent_name = "the agent"
 
@@ -163,7 +173,7 @@ async def voice_live(ws: WebSocket):
         # Native-audio: respond to the user's tone for more natural, less robotic
         # turn-taking (proactivity isn't supported on this model yet).
         "enable_affective_dialog": True,
-        "system_instruction": _system_instruction(agent_name, tz_name, recent_context),
+        "system_instruction": _system_instruction(agent_name, tz_name, recent_context, industry_mode),
         "tools": [{"function_declarations": TOOL_DECLARATIONS}],
         # Turn-taking: respond sooner after the user stops talking. The model's
         # default end-of-speech window is conservative and is the main per-turn

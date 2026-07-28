@@ -123,13 +123,24 @@ def get_my_agent(jwt_agent_id: str = Depends(get_jwt_agent_id)):
     if not jwt_agent_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     db = get_supabase()
-    result = (
-        db.table("agents")
-        .select("*, brokerages(name)")
-        .eq("id", jwt_agent_id)
-        .single()
-        .execute()
-    )
+    # Tolerate the industry_mode column not existing yet (migration 008 not
+    # applied): fall back to the name-only join so /me never 500s pre-migration.
+    try:
+        result = (
+            db.table("agents")
+            .select("*, brokerages(name, industry_mode)")
+            .eq("id", jwt_agent_id)
+            .single()
+            .execute()
+        )
+    except Exception:
+        result = (
+            db.table("agents")
+            .select("*, brokerages(name)")
+            .eq("id", jwt_agent_id)
+            .single()
+            .execute()
+        )
     if not result.data:
         raise HTTPException(status_code=404, detail="Agent not found")
     data = result.data
