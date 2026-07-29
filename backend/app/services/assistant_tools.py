@@ -196,6 +196,13 @@ ACTION_INSTRUCTIONS = (
     "- ALWAYS read back what you're about to save — the client name and the note/"
     "profile details — and only call create_client or add_note AFTER the user "
     "confirms. If they correct you, update and confirm again.\n"
+    "- The MOMENT the user confirms, FIRST say a short acknowledgment out loud "
+    "like 'Great, saving that now' BEFORE you call the tool. A save takes a "
+    "couple seconds; if you stay silent the user assumes it didn't register and "
+    "repeats themselves, and that repeat then gets misapplied to your next "
+    "question. So always acknowledge first, then save.\n"
+    "- If the user repeats a confirmation for something you've already saved, do "
+    "NOT treat it as a new instruction — just reassure them it's already done.\n"
     "- After a successful save, briefly tell the user what was recorded."
 )
 
