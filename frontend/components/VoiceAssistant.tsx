@@ -70,12 +70,19 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
   };
 
   const restart = async () => {
-    sessionRef.current?.stop();
+    try { sessionRef.current?.stop(); } catch { /* already torn down */ }
     sessionRef.current = null;
     setEntries([]);
     setMuted(false);
+    setError(null);
     setState("idle");
-    await connect();
+    try {
+      await connect();
+    } catch {
+      // Don't leave the user stuck on a dead panel — surface a recovery path.
+      setError("Couldn't restart the session. Please reload the page and try again.");
+      setState("error");
+    }
   };
 
   const submitText = () => {

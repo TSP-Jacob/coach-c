@@ -179,16 +179,19 @@ async def voice_live(ws: WebSocket):
         # default end-of-speech window is conservative and is the main per-turn
         # lag; ~500 ms feels far snappier without clipping normal pauses. Tune
         # silence_duration_ms up if it ever cuts users off mid-thought.
-        # Turn-taking. silence_duration_ms is how long you can pause mid-thought
-        # before Gemini decides you're done — too short and it cuts you off after
-        # the first word when you pause to think. ~800ms tolerates natural pauses
-        # while still feeling responsive (the big latency win comes from the
-        # pre-loaded call context, not from clipping the user). prefix_padding
-        # keeps the start of speech from being clipped.
+        # Turn-taking, tuned for users who dictate a lot of detail at once.
+        # silence_duration_ms is how long you can pause mid-thought before Gemini
+        # decides you're done. 1.5s tolerates thinking/breathing pauses so a long
+        # message isn't cut off partway (trade-off: ~1.5s before it replies once
+        # you truly stop). LOW start sensitivity means background noise is less
+        # likely to be mistaken for you interrupting (which was halting replies);
+        # LOW end sensitivity makes it less eager to declare your turn over.
         "realtime_input_config": {
             "automatic_activity_detection": {
-                "silence_duration_ms": 800,
+                "silence_duration_ms": 1500,
                 "prefix_padding_ms": 300,
+                "start_of_speech_sensitivity": types.StartSensitivity.START_SENSITIVITY_LOW,
+                "end_of_speech_sensitivity": types.EndSensitivity.END_SENSITIVITY_LOW,
             }
         },
     }
