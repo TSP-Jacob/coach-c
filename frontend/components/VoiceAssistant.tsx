@@ -3,13 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getAuthToken, wsBase } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { VoiceSession, VoiceState, TranscriptEntry } from "@/lib/voiceClient";
-import { Mic, MicOff, Keyboard, Send, RotateCcw, Loader2, AudioLines, AlertCircle } from "lucide-react";
+import { Mic, Square, Keyboard, Send, RotateCcw, Loader2, AudioLines, AlertCircle } from "lucide-react";
 import { clsx } from "clsx";
 
 const STATUS: Record<VoiceState, string> = {
   idle: "Starting…",
   connecting: "Connecting…",
-  listening: "Listening — just start talking",
+  ready: "Tap the mic to talk",
+  listening: "Listening — tap when you're done",
+  thinking: "Thinking…",
   speaking: "Speaking…",
   error: "Something went wrong",
   closed: "Conversation ended",
@@ -19,7 +21,6 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [state, setState]     = useState<VoiceState>("idle");
   const [level, setLevel]     = useState(0);
-  const [muted, setMuted]     = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [showText, setShowText] = useState(false);
   const [text, setText]       = useState("");
@@ -63,17 +64,18 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [entries]);
 
-  const toggleMute = () => {
-    const m = !muted;
-    setMuted(m);
-    sessionRef.current?.setMuted(m);
+  // Push-to-talk: tap to start your turn, tap again when you're done.
+  const onTalkTap = () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    if (state === "listening") s.endTurn();
+    else s.startTurn();
   };
 
   const restart = async () => {
     try { sessionRef.current?.stop(); } catch { /* already torn down */ }
     sessionRef.current = null;
     setEntries([]);
-    setMuted(false);
     setError(null);
     setState("idle");
     try {
@@ -93,8 +95,7 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
     setText("");
   };
 
-  const active = state === "listening" || state === "speaking";
-  const dead   = state === "closed" || state === "error";
+  const dead = state === "closed" || state === "error";
 
   return (
     <div className="flex flex-col h-full min-h-0" onPointerDown={() => sessionRef.current?.resume()}>
@@ -107,8 +108,8 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
                 <AudioLines className="text-brand" size={compact ? 22 : 28} />
               </div>
             </div>
-            <p className="font-medium text-charcoal">Talk to your assistant</p>
-            <p>Ask things like “What did I offer the Tremblays?” or “Which client did I speak with around June 3rd?” — I’ll pull it from your records.</p>
+            <p className="font-medium text-charcoal">Tap the mic to talk</p>
+            <p>Tap the mic, speak as long as you like — pauses are fine — then tap again when you're done. Ask about your clients and calls, or tell me about a job to save it.</p>
           </div>
         )}
 
@@ -138,12 +139,15 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
 
       {/* ── Status + level ── */}
       <div className="px-4 pt-1 flex items-center gap-2 justify-center text-[11px] text-muted">
-        {state === "connecting" || state === "idle" ? (
+        {state === "connecting" || state === "idle" || state === "thinking" ? (
           <Loader2 size={12} className="animate-spin" />
         ) : (
-          <span className={clsx("w-2 h-2 rounded-full", active ? "bg-green-500" : "bg-gray-300")} />
+          <span className={clsx(
+            "w-2 h-2 rounded-full",
+            state === "listening" ? "bg-red-500" : state === "speaking" ? "bg-green-500" : "bg-gray-300",
+          )} />
         )}
-        <span>{muted ? "Muted" : STATUS[state]}</span>
+        <span>{STATUS[state]}</span>
       </div>
 
       {/* ── Mic level meter ── */}
@@ -151,7 +155,7 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
         {Array.from({ length: 9 }).map((_, i) => {
           const center = Math.abs(i - 4);
           const threshold = center / 5;
-          const on = !muted && active && level > threshold;
+          const on = state === "listening" && level > threshold;
           return (
             <span
               key={i}
@@ -193,16 +197,6 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
         ) : (
           <>
             <button
-              onClick={toggleMute}
-              title={muted ? "Unmute microphone" : "Mute microphone"}
-              className={clsx(
-                "w-11 h-11 rounded-full flex items-center justify-center transition-colors",
-                muted ? "bg-gray-200 text-charcoal" : "bg-brand text-white hover:opacity-90",
-              )}
-            >
-              {muted ? <MicOff size={18} /> : <Mic size={18} />}
-            </button>
-            <button
               onClick={() => setShowText((v) => !v)}
               title="Type instead"
               className={clsx(
@@ -211,6 +205,18 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
               )}
             >
               <Keyboard size={16} />
+            </button>
+            <button
+              onClick={onTalkTap}
+              disabled={state === "connecting" || state === "idle" || state === "thinking"}
+              title={state === "listening" ? "Tap when you're done" : "Tap to talk"}
+              className={clsx(
+                "w-14 h-14 rounded-full flex items-center justify-center transition-colors shadow-sm",
+                state === "listening" ? "bg-red-500 text-white" : "bg-brand text-white hover:opacity-90",
+                (state === "connecting" || state === "idle" || state === "thinking") && "opacity-50 cursor-not-allowed",
+              )}
+            >
+              {state === "listening" ? <Square size={20} fill="currentColor" /> : <Mic size={22} />}
             </button>
             <button
               onClick={restart}

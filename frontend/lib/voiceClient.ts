@@ -12,7 +12,7 @@
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
 
-export type VoiceState = "idle" | "connecting" | "listening" | "speaking" | "error" | "closed";
+export type VoiceState = "idle" | "connecting" | "ready" | "listening" | "thinking" | "speaking" | "error" | "closed";
 
 export interface TranscriptEntry {
   role: "user" | "assistant";
@@ -63,7 +63,8 @@ export class VoiceSession {
   private transcript: TranscriptEntry[] = [];
   private state: VoiceState = "idle";
   private muted = false;
-  private ready = false; // true once the server sends "ready" (auth accepted)
+  private ready = false;   // connection ready (server sent "ready", auth accepted)
+  private talking = false; // push-to-talk: true while the user's turn is active
   private closed = false;
   private levelThrottle = 0;
 
@@ -155,8 +156,8 @@ export class VoiceSession {
       this.levelThrottle = now;
       this.cb.onLevel?.(Math.min(1, data.level * 4));
     }
-    if (this.muted || !this.ready || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    // Batch ~100 ms of audio before sending to cut message overhead.
+    // Push-to-talk: only stream mic audio while the user's turn is active.
+    if (!this.talking || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     this.pending.push(new Int16Array(data.pcm));
     this.pendingLen += data.pcm.byteLength / 2;
     // Flush ~50 ms of audio at a time — small enough to keep input latency low,
@@ -178,7 +179,7 @@ export class VoiceSession {
       switch (msg.type) {
         case "ready":
           this.ready = true;
-          this.setState("listening");
+          this.setState("ready");
           break;
         case "input_transcript":
           this.openEntry("user").text += msg.text;
@@ -224,7 +225,7 @@ export class VoiceSession {
     this.sources.add(node);
     node.onended = () => {
       this.sources.delete(node);
-      if (this.sources.size === 0 && !this.closed) this.setState("listening");
+      if (this.sources.size === 0 && !this.closed && !this.talking) this.setState("ready");
     };
   }
 
@@ -232,7 +233,7 @@ export class VoiceSession {
     for (const n of this.sources) { try { n.stop(); } catch {} }
     this.sources.clear();
     this.nextStart = 0;
-    if (!this.closed) this.setState("listening");
+    if (!this.closed && !this.talking) this.setState("ready");
   }
 
   /** Send a typed message instead of speaking. */
@@ -246,6 +247,34 @@ export class VoiceSession {
   }
 
   setMuted(m: boolean) { this.muted = m; }
+  isTalking() { return this.talking; }
+
+  /** Push-to-talk: begin the user's turn. Streams mic audio until endTurn(). */
+  async startTurn() {
+    if (!this.ready || this.closed || this.talking) return;
+    await this.resume();
+    this.stopPlayback();           // barge-in: cut any assistant playback
+    this.pending = []; this.pendingLen = 0;
+    this.talking = true;
+    try { this.ws?.send(JSON.stringify({ type: "activity_start" })); } catch {}
+    this.setState("listening");
+  }
+
+  /** Push-to-talk: end the user's turn — flush audio, signal end, await reply. */
+  endTurn() {
+    if (!this.talking) return;
+    this.talking = false;
+    // Flush any buffered mic audio so the tail of the turn isn't dropped.
+    if (this.pendingLen && this.ws?.readyState === WebSocket.OPEN) {
+      const merged = new Int16Array(this.pendingLen);
+      let off = 0;
+      for (const chunk of this.pending) { merged.set(chunk, off); off += chunk.length; }
+      this.ws.send(merged.buffer);
+    }
+    this.pending = []; this.pendingLen = 0;
+    try { this.ws?.send(JSON.stringify({ type: "activity_end" })); } catch {}
+    this.setState("thinking");
+  }
 
   /** Resume suspended AudioContexts (call on a user gesture to satisfy
    *  browser autoplay policies). */
@@ -257,6 +286,7 @@ export class VoiceSession {
   stop() {
     this.closed = true;
     this.ready = false;
+    this.talking = false;
     try { this.ws?.send(JSON.stringify({ type: "end" })); } catch {}
     try { this.ws?.close(); } catch {}
     this.stopPlayback();

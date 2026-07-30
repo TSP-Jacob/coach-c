@@ -179,20 +179,13 @@ async def voice_live(ws: WebSocket):
         # default end-of-speech window is conservative and is the main per-turn
         # lag; ~500 ms feels far snappier without clipping normal pauses. Tune
         # silence_duration_ms up if it ever cuts users off mid-thought.
-        # Turn-taking, tuned for users who dictate a lot of detail at once.
-        # silence_duration_ms is how long you can pause mid-thought before Gemini
-        # decides you're done. 1.5s tolerates thinking/breathing pauses so a long
-        # message isn't cut off partway (trade-off: ~1.5s before it replies once
-        # you truly stop). LOW start sensitivity means background noise is less
-        # likely to be mistaken for you interrupting (which was halting replies);
-        # LOW end sensitivity makes it less eager to declare your turn over.
+        # Manual turn-taking (push-to-talk): the browser sends explicit
+        # activity_start / activity_end signals, so the user controls exactly when
+        # their turn begins and ends. A quick "yes" fires instantly and a long
+        # explanation is never cut off — no silence-threshold guessing, and
+        # background noise can't be mistaken for the user interrupting.
         "realtime_input_config": {
-            "automatic_activity_detection": {
-                "silence_duration_ms": 1500,
-                "prefix_padding_ms": 300,
-                "start_of_speech_sensitivity": types.StartSensitivity.START_SENSITIVITY_LOW,
-                "end_of_speech_sensitivity": types.EndSensitivity.END_SENSITIVITY_LOW,
-            }
+            "automatic_activity_detection": {"disabled": True},
         },
     }
 
@@ -224,7 +217,13 @@ async def voice_live(ws: WebSocket):
                     except Exception:
                         continue
                     kind = payload.get("type")
-                    if kind == "text" and payload.get("text"):
+                    if kind == "activity_start":
+                        # Push-to-talk: user tapped to start speaking.
+                        await session.send_realtime_input(activity_start=types.ActivityStart())
+                    elif kind == "activity_end":
+                        # Push-to-talk: user tapped "done" — end the turn.
+                        await session.send_realtime_input(activity_end=types.ActivityEnd())
+                    elif kind == "text" and payload.get("text"):
                         # Typed input isn't transcribed back to us, so capture it
                         # here for the saved history.
                         turn["user"] += payload["text"]
