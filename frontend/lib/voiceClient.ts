@@ -180,6 +180,7 @@ export class VoiceSession {
         case "ready":
           this.ready = true;
           this.setState("ready");
+          this.playReadyChime();  // audible cue: connected, tap to talk
           break;
         case "input_transcript":
           this.openEntry("user").text += msg.text;
@@ -234,6 +235,29 @@ export class VoiceSession {
     this.sources.clear();
     this.nextStart = 0;
     if (!this.closed && !this.talking) this.setState("ready");
+  }
+
+  /** A soft two-note chime the instant the connection is ready, so the user
+   *  knows they can tap and talk — immediate and unobtrusive. */
+  private playReadyChime() {
+    const ctx = this.outCtx;
+    if (!ctx) return;
+    ctx.resume().catch(() => {});
+    const dest = this.outGain ?? ctx.destination;
+    const start = ctx.currentTime + 0.03;
+    [523.25, 783.99].forEach((freq, i) => {  // C5 → G5: a friendly rising fifth
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const t = start + i * 0.11;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.14, t + 0.03);   // gentle attack
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.30); // smooth release
+      osc.connect(gain).connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.34);
+    });
   }
 
   /** Send a typed message instead of speaking. */
