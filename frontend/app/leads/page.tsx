@@ -163,7 +163,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <select
           value={sourceFilter}
           onChange={e => setSourceFilter(e.target.value)}
@@ -198,8 +198,8 @@ export default function LeadsPage() {
 
       {/* Table */}
       <div className="bg-white border border-warm-border">
-        {/* Column headers */}
-        <div className={`grid ${canManage ? "grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-4 px-6 py-3 border-b border-warm-border`}>
+        {/* Column headers — desktop only; on mobile each lead stacks into a card */}
+        <div className={`hidden md:grid ${canManage ? "md:grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "md:grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-4 px-6 py-3 border-b border-warm-border`}>
           {[
             "Lead", "Source", "Contact",
             ...(canManage ? ["Assigned Agent"] : []),
@@ -224,7 +224,7 @@ export default function LeadsPage() {
 
             return (
               <div key={lead.id} className={isResponded ? "opacity-70" : ""}>
-                <div className={`grid ${canManage ? "grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-4 px-6 py-5 hover:bg-cream transition-colors items-center`}>
+                <div className={`grid grid-cols-1 ${canManage ? "md:grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "md:grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-3 md:gap-4 px-4 md:px-6 py-4 md:py-5 hover:bg-cream transition-colors md:items-center`}>
 
                   {/* Name + date + expand */}
                   <div>
@@ -310,7 +310,7 @@ export default function LeadsPage() {
 
                 {/* Expandable Home Value property detail */}
                 {isExpanded && hasPropertyDetail && (
-                  <div className="px-6 pb-5 bg-cream border-t border-warm-border grid grid-cols-2 gap-x-8 gap-y-3 pt-4">
+                  <div className="px-4 md:px-6 pb-5 bg-cream border-t border-warm-border grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 pt-4">
                     {lead.address && (
                       <div>
                         <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Address</p>
