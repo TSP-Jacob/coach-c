@@ -65,6 +65,7 @@ export class VoiceSession {
   private muted = false;
   private ready = false;   // connection ready (server sent "ready", auth accepted)
   private talking = false; // push-to-talk: true while the user's turn is active
+  private autoStartFirstTurn = true; // open the mic automatically for the first turn
   private closed = false;
   private levelThrottle = 0;
 
@@ -180,7 +181,13 @@ export class VoiceSession {
         case "ready":
           this.ready = true;
           this.setState("ready");
-          this.playReadyChime();  // audible cue: connected, tap to talk
+          this.playReadyChime();  // audible cue: connected
+          if (this.autoStartFirstTurn) {
+            // Hands-free first turn: the user can just start talking right after
+            // the chime. From the 2nd turn on it's tap-to-talk.
+            this.autoStartFirstTurn = false;
+            this.startTurn();
+          }
           break;
         case "input_transcript":
           this.openEntry("user").text += msg.text;

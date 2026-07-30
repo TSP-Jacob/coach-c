@@ -108,8 +108,8 @@ export default function VoiceAssistant({ compact = false }: { compact?: boolean 
                 <AudioLines className="text-brand" size={compact ? 22 : 28} />
               </div>
             </div>
-            <p className="font-medium text-charcoal">Tap the mic to talk</p>
-            <p>Tap the mic, speak as long as you like — pauses are fine — then tap again when you're done. Ask about your clients and calls, or tell me about a job to save it.</p>
+            <p className="font-medium text-charcoal">Just start talking</p>
+            <p>The mic is on — speak, pauses are fine, then tap ■ when you're done. After that, tap the mic each time you want to talk. Ask about your clients and calls, or tell me about a job to save it.</p>
           </div>
         )}
 
