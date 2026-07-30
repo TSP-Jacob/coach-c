@@ -164,7 +164,7 @@ export default function ClientsPage() {
 
       {/* Table */}
       <div className="bg-white border border-warm-border">
-        <div className="grid grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-4 px-6 py-3 border-b border-warm-border">
+        <div className="hidden md:grid md:grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-4 px-6 py-3 border-b border-warm-border">
           {["Client", "Status", "Contact", "Calls · Score", ""].map((h, i) => (
             <p key={i} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
           ))}
@@ -191,7 +191,7 @@ export default function ClientsPage() {
                 {/* Summary row — click to expand */}
                 <div
                   onClick={() => setExpandedId(isOpen ? null : row.id)}
-                  className="grid grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-4 px-6 py-5 hover:bg-cream transition-colors items-center cursor-pointer select-none"
+                  className="grid grid-cols-1 md:grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-3 md:gap-4 px-4 md:px-6 py-4 md:py-5 hover:bg-cream transition-colors md:items-center cursor-pointer select-none"
                 >
                   {/* Name */}
                   <div>
@@ -256,7 +256,7 @@ export default function ClientsPage() {
                   <div className="border-t border-warm-border bg-cream px-6 py-6 space-y-6">
 
                     {/* Top row: Agent + Status + Contact */}
-                    <div className="grid grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
 
                       {/* Agent + client status */}
                       <div className="space-y-4">
