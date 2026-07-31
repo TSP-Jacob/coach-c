@@ -109,7 +109,8 @@ export const api = {
     },
   },
   agents: {
-    list: () => req<Agent[]>(`/api/agents/`),
+    list: (brokerageId?: string) =>
+      req<Agent[]>(`/api/agents/${brokerageId ? `?brokerage_id=${brokerageId}` : ""}`),
     get: (id: string) => req<Agent>(`/api/agents/${id}`),
     stats: (id: string) => req<AgentStats>(`/api/agents/${id}/stats`),
     // Organization-wide performance overview (managers + admins)
@@ -166,6 +167,13 @@ export const api = {
       req<OrgProfile>(`/api/organization/`, { method: "POST", body: JSON.stringify({ name }) }),
     updateById: (id: string, body: Partial<OrgProfile>) =>
       req<OrgProfile>(`/api/organization/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    setupStatus: (id: string) => req<OrgSetupStatus>(`/api/organization/${id}/setup-status`),
+    createPhoneAgent: (orgId: string, body: { agent_id: string; name: string; base_url: string }) =>
+      req<PhoneAgentDeployment>(`/api/organization/${orgId}/phone-agents`, { method: "POST", body: JSON.stringify(body) }),
+    updatePhoneAgent: (orgId: string, id: string, body: Partial<{ agent_id: string; name: string; base_url: string }>) =>
+      req<PhoneAgentDeployment>(`/api/organization/${orgId}/phone-agents/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deletePhoneAgent: (orgId: string, id: string) =>
+      req(`/api/organization/${orgId}/phone-agents/${id}`, { method: "DELETE" }),
   },
   phoneNumbers: {
     list: () => req<PhoneNumber[]>(`/api/phone-numbers/`),
@@ -274,6 +282,41 @@ export interface OrgProfile {
   industry_mode?: IndustryMode;
   email?: string;
   agent_role?: string; // only present on GET /organization/
+}
+
+export interface PhoneAgentDeployment {
+  id: string;
+  brokerage_id: string;
+  agent_id: string | null;
+  name: string;
+  base_url: string;
+  created_at: string;
+  updated_at?: string;
+  agents?: { name: string } | null;
+  agent_valid?: boolean;
+  reachable?: boolean | null;
+  health_error?: string | null;
+}
+
+export interface OrgSetupPhoneNumber {
+  id: string;
+  number: string;
+  label?: string | null;
+  active: boolean;
+  forward_to?: string | null;
+  expected_webhook: string;
+  twilio_checked: boolean;
+  twilio_found?: boolean | null;
+  twilio_voice_url?: string | null;
+  twilio_matches: boolean;
+  twilio_error?: string | null;
+}
+
+export interface OrgSetupStatus {
+  brokerage: { id: string; name: string; industry_mode_set: boolean };
+  team: { total_agents: number; admin_or_manager_count: number; ok: boolean };
+  phone_numbers: OrgSetupPhoneNumber[];
+  phone_agents: PhoneAgentDeployment[];
 }
 
 export interface Consent {
