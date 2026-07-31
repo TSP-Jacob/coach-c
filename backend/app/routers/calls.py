@@ -160,6 +160,51 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
         raise
 
 
+@router.post("/{call_id}/ingest")
+def ingest_call(
+    call_id: str,
+    background_tasks: BackgroundTasks,
+    x_upload_secret: str | None = Header(None, alias="X-Upload-Secret"),
+):
+    """Server-to-server: trigger the transcription/coaching pipeline for a call
+    whose row + audio were already written directly to storage by another
+    system (e.g. chardin_website's Android upload flow, which shares this
+    Supabase project but can't run Python). Requires CALL_UPLOAD_SECRET, same
+    as /upload's server-to-server path."""
+    if settings.call_upload_secret:
+        if not x_upload_secret or not hmac.compare_digest(x_upload_secret, settings.call_upload_secret):
+            raise HTTPException(status_code=401, detail="Invalid upload secret")
+
+    db = get_supabase()
+    result = (db.table("calls")
+              .select("id, agent_id, audio_url, from_number, to_number, brokerage_id, status")
+              .eq("id", call_id).maybe_single().execute())
+    if not result or not result.data:
+        raise HTTPException(status_code=404, detail="Call not found")
+    row = result.data
+
+    if row.get("status") != "uploaded":
+        return {"queued": False, "reason": f"status is '{row.get('status')}', not ingestible"}
+    if not row.get("audio_url"):
+        raise HTTPException(status_code=400, detail="No audio uploaded for this call")
+
+    # audio_url as written by the direct-upload flow is a bare storage path,
+    # not a fetchable URL — resolve + persist a signed URL like every other
+    # ingestion path in this file does.
+    audio_url = row["audio_url"]
+    if not audio_url.startswith("http"):
+        signed = db.storage.from_("call-recordings").create_signed_url(audio_url, 3600)
+        audio_url = signed.get("signedURL") or audio_url
+        db.table("calls").update({"audio_url": audio_url}).eq("id", call_id).execute()
+
+    phone_hint = row.get("from_number") or row.get("to_number")
+    background_tasks.add_task(
+        _process_call, call_id, row["agent_id"], audio_url,
+        None, phone_hint, None, row.get("brokerage_id"),
+    )
+    return {"queued": True}
+
+
 @router.post("/webhook/bland")
 async def bland_webhook(request: Request, background_tasks: BackgroundTasks):
     """
