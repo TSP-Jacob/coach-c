@@ -6,7 +6,7 @@ import ScoreBadge from "@/components/ScoreBadge";
 import ScoreTrend from "@/components/ScoreTrend";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { TrendingUp, TrendingDown, Minus, AlertCircle, Star } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, AlertCircle, Star, Sparkles } from "lucide-react";
 
 const CALL_TYPE_LABELS: Record<string, string> = {
   prospecting: "Prospecting",
@@ -18,12 +18,43 @@ const CALL_TYPE_LABELS: Record<string, string> = {
   unknown: "Unknown",
 };
 
-function StatCard({ label, value, delta }: { label: string; value: string; delta?: string }) {
-  return (
-    <div className="bg-white border border-warm-border p-6">
+// Literal class names (not interpolated) so Tailwind's content scanner picks them up.
+const STATS_GRID_COLS: Record<number, string> = {
+  1: "md:grid-cols-1",
+  2: "md:grid-cols-2",
+  3: "md:grid-cols-3",
+  4: "md:grid-cols-4",
+};
+
+function StatCard({ label, value, delta, href }: { label: string; value: string; delta?: string; href?: string }) {
+  const content = (
+    <>
       <p className="text-[10px] tracking-widest uppercase text-muted mb-3">{label}</p>
       <p className="text-4xl font-serif font-bold text-charcoal leading-none">{value}</p>
       {delta && <p className="text-xs text-muted mt-2">{delta}</p>}
+    </>
+  );
+  if (href) {
+    return (
+      <Link href={href} className="bg-white border border-warm-border p-6 block hover:bg-cream transition-colors">
+        {content}
+      </Link>
+    );
+  }
+  return <div className="bg-white border border-warm-border p-6">{content}</div>;
+}
+
+function OverviewCard({ text, loading }: { text?: string; loading: boolean }) {
+  return (
+    <div className="bg-white border border-warm-border p-6 flex flex-col justify-center">
+      <div className="flex items-center gap-1.5 mb-3">
+        <Sparkles size={11} className="text-brand" />
+        <p className="text-[10px] tracking-widest uppercase text-muted">AI Overview</p>
+      </div>
+      {loading
+        ? <p className="text-sm text-muted italic">Thinking…</p>
+        : <p className="text-sm text-charcoal leading-relaxed">{text}</p>
+      }
     </div>
   );
 }
@@ -31,6 +62,8 @@ function StatCard({ label, value, delta }: { label: string; value: string; delta
 export default function Dashboard() {
   const { agentId: AGENT_ID, features } = useAuth();
   const coaching = features.call_coaching;
+  const showLeads = features.leads !== false;
+  const showFollowUps = features.follow_ups !== false;
   // Cached via SWR — revisiting the dashboard shows data instantly, then revalidates.
   const { data: calls = [] } = useSWR<Call[]>(
     AGENT_ID ? ["calls", AGENT_ID] : null,
@@ -42,6 +75,11 @@ export default function Dashboard() {
   const busy = pollWhileProcessing(calls) > 0;
   const { data: stats = null } = useSWR(AGENT_ID ? ["stats", AGENT_ID] : null, () => api.agents.stats(AGENT_ID!), { refreshInterval: busy ? 5000 : 0 });
   const { data: insights = null } = useSWR(AGENT_ID ? ["insights", AGENT_ID] : null, () => api.calls.insights().catch(() => null), { refreshInterval: busy ? 5000 : 0 });
+  const { data: overview } = useSWR(
+    AGENT_ID ? ["dashboard-overview", AGENT_ID] : null,
+    () => api.dashboard.overview(),
+    { refreshInterval: 5 * 60_000 },
+  );
 
   const recentCalls = calls.slice(0, 8);
 
@@ -50,10 +88,6 @@ export default function Dashboard() {
     .sort((a, b) => new Date(a.call_date ?? a.created_at).getTime() - new Date(b.call_date ?? b.created_at).getTime())
     .slice(-20)
     .map(c => ({ date: c.call_date ?? c.created_at, score: c.overall_score! }));
-
-  const thisWeek = calls.filter(c =>
-    (Date.now() - new Date(c.created_at).getTime()) < 7 * 86_400_000
-  ).length;
 
   const needsAttention = calls.filter(
     c => c.status === "complete" && c.overall_score != null && c.overall_score < 70
@@ -78,13 +112,27 @@ export default function Dashboard() {
       </div>
 
       {/* Stats grid */}
-      <div className={`grid grid-cols-2 ${coaching ? "md:grid-cols-4" : "md:grid-cols-3"} gap-px bg-warm-border border border-warm-border`}>
-        <StatCard label="Total Calls" value={String(stats?.total_calls ?? "—")} delta={thisWeek > 0 ? `${thisWeek} this week` : undefined} />
-        {coaching && (
-          <StatCard label="Avg Score"   value={stats?.average_score != null ? `${stats.average_score}` : "—"} delta="out of 100" />
+      <div className={`grid grid-cols-2 ${STATS_GRID_COLS[1 + (showLeads ? 1 : 0) + (showFollowUps ? 1 : 0) + (coaching ? 1 : 0)]} gap-px bg-warm-border border border-warm-border`}>
+        {showLeads && (
+          <StatCard
+            label="New Leads"
+            value={overview ? String(overview.new_leads_count) : "—"}
+            delta="awaiting response"
+            href="/leads"
+          />
         )}
-        <StatCard label="Call Types"  value={String(Object.keys(stats?.by_type ?? {}).length)} delta="categories tracked" />
-        <StatCard label="This Week"   value={String(thisWeek)} delta="calls recorded" />
+        {showFollowUps && (
+          <StatCard
+            label="Follow Ups"
+            value={overview ? String(overview.follow_ups_count) : "—"}
+            delta={overview && overview.overdue_follow_ups_count > 0 ? `${overview.overdue_follow_ups_count} overdue` : "scheduled"}
+            href="/follow-ups"
+          />
+        )}
+        {coaching && (
+          <StatCard label="Avg Score" value={stats?.average_score != null ? `${stats.average_score}` : "—"} delta="out of 100" />
+        )}
+        <OverviewCard text={overview?.overview} loading={!overview} />
       </div>
 
       {/* Coaching insights panel */}

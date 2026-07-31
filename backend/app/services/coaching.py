@@ -107,6 +107,58 @@ Return a JSON object with this exact structure:
                 raw = raw[4:]
         return json.loads(raw.strip())
 
+    def summarize_actions(
+        self,
+        leads: list[dict],
+        follow_ups: list[dict],
+        overdue_count: int,
+        agent_name: str = "there",
+    ) -> str:
+        """One-sentence, dashboard-header summary of what needs attention
+        among new leads and scheduled follow-ups."""
+        if not leads and not follow_ups:
+            return "You're all caught up — no new leads or follow-ups need attention."
+
+        lead_lines = "\n".join(
+            f"- {l.get('name') or 'Unknown'} (via {l.get('source') or 'unknown source'})"
+            for l in leads[:10]
+        ) or "none"
+        fu_lines = "\n".join(
+            f"- {f.get('name') or 'Unknown'} due {f.get('follow_up_date')}"
+            for f in follow_ups[:10]
+        ) or "none"
+
+        user_prompt = f"""New leads awaiting a first response:
+{lead_lines}
+
+Scheduled follow-ups:
+{fu_lines}
+
+{overdue_count} of those follow-ups are overdue.
+
+In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} what to prioritize right now. Name specific people only if there are 3 or fewer items total; otherwise summarize by count."""
+
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=80,
+                system="You write brief, direct action-item summaries for a busy service-business owner. No preamble, no markdown, exactly one sentence.",
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            return _text_of(message) or self._fallback_action_summary(leads, follow_ups, overdue_count)
+        except Exception:
+            return self._fallback_action_summary(leads, follow_ups, overdue_count)
+
+    @staticmethod
+    def _fallback_action_summary(leads: list[dict], follow_ups: list[dict], overdue_count: int) -> str:
+        parts = []
+        if leads:
+            parts.append(f"{len(leads)} new lead{'s' if len(leads) != 1 else ''} awaiting response")
+        if follow_ups:
+            suffix = f" ({overdue_count} overdue)" if overdue_count else ""
+            parts.append(f"{len(follow_ups)} follow-up{'s' if len(follow_ups) != 1 else ''} scheduled{suffix}")
+        return (" and ".join(parts) + ".") if parts else "You're all caught up."
+
     def identify_client(self, full_text: str, clients: list[dict]) -> dict:
         """
         Returns:

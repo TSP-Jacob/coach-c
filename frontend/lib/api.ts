@@ -65,6 +65,9 @@ export const api = {
     update: (id: string, body: { status?: string; agent_id?: string; contact_method?: string }) =>
       req<Lead>(`/api/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
+  dashboard: {
+    overview: () => req<DashboardOverview>(`/api/dashboard/overview`),
+  },
   followUps: {
     list: (agentId?: string) =>
       req<Client[]>(`/api/follow-ups/${agentId ? `?agent_id=${agentId}` : ""}`),
@@ -344,6 +347,13 @@ export interface PhoneNumber {
   created_at: string;
   brokerages?: { name: string } | null;
   agents?: { name: string } | null;
+}
+
+export interface DashboardOverview {
+  new_leads_count: number;
+  follow_ups_count: number;
+  overdue_follow_ups_count: number;
+  overview: string;
 }
 
 export interface Lead {
