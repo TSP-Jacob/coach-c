@@ -65,6 +65,9 @@ export const api = {
     update: (id: string, body: { status?: string; agent_id?: string; contact_method?: string }) =>
       req<Lead>(`/api/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
+  app: {
+    androidDownload: () => req<{ url: string }>(`/api/app/android/download`),
+  },
   dashboard: {
     overview: () => req<DashboardOverview>(`/api/dashboard/overview`),
   },

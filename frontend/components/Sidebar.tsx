@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2, CreditCard, ShieldCheck, PhoneCall, CalendarClock, ListChecks } from "lucide-react";
+import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2, CreditCard, ShieldCheck, PhoneCall, CalendarClock, ListChecks, Smartphone } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/lib/auth";
 
@@ -22,6 +22,7 @@ const nav: NavItem[] = [
   { href: "/notes",        label: "Notes",        icon: NotebookPen,   feature: "notes" },
   { href: "/organization", label: "Organization", icon: Building2 },
   { href: "/guidelines",   label: "Guidelines",   icon: BookOpen },
+  { href: "/get-app",      label: "Get the App",  icon: Smartphone,    feature: "mobile_app" },
   // Admin-only team management
   { href: "/team",          label: "Team",            icon: ShieldCheck, roles: ["admin"] },
   { href: "/phone-numbers", label: "Phone Numbers",   icon: PhoneCall,   roles: ["admin"] },

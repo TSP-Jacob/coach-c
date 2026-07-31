@@ -22,6 +22,7 @@ FEATURE_DEFAULTS: dict[str, bool] = {
     "notes":           True,
     "follow_ups":      True,
     "tasks":           True,
+    "mobile_app":      True,
 }
 
 

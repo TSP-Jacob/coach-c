@@ -30,6 +30,7 @@ export const FEATURE_DEFAULTS: Features = {
   notes: true,
   follow_ups: true,
   tasks: true,
+  mobile_app: true,
 };
 
 function mergeFeatures(f?: Features | null): Features {

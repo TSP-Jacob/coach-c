@@ -20,6 +20,7 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   { key: "notes",           label: "Notes",           hint: "Client notes section" },
   { key: "follow_ups",      label: "Follow-Ups",      hint: "Follow-up reminders section" },
   { key: "tasks",           label: "Tasks",           hint: "Manager-assigned tasks section" },
+  { key: "mobile_app",      label: "Mobile App",      hint: "\"Get the App\" download page" },
 ];
 
 function Toggle({ on, disabled, onClick }: { on: boolean; disabled?: boolean; onClick: () => void }) {
