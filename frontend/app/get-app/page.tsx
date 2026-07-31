@@ -37,11 +37,12 @@ export default function GetAppPage() {
           <p className="text-[10px] tracking-widest uppercase text-muted">What this app does</p>
         </div>
         <p className="text-sm text-charcoal leading-relaxed">
-          Install this on your phone and it screens incoming calls, letting you answer yourself
-          or decline. When you answer a call yourself, it records and uploads it straight to your
-          Coach-C account. Calls you don&apos;t answer are handled by your carrier&apos;s call
-          forwarding (set up separately) so they can still reach your AI phone agent instead of
-          voicemail.
+          Install this on your phone and it records both sides of the call — incoming calls you
+          answer yourself, and outgoing calls you place — uploading each one straight to your
+          Coach-C account. It also screens incoming calls, letting you answer or decline; calls
+          you don&apos;t answer are handled by your carrier&apos;s call forwarding (set up
+          separately) so they can still reach your AI phone agent instead of voicemail. Any
+          contact on your do-not-record list is skipped in both directions.
         </p>
       </div>
 
@@ -74,8 +75,8 @@ export default function GetAppPage() {
           </li>
           <li>Open the app and sign in with your Coach-C email and password.</li>
           <li>
-            Grant the permissions it asks for (call screening, microphone, phone) — it can&apos;t
-            record or hand off calls without them.
+            Grant the permissions it asks for (call screening, microphone, phone, call log) — it
+            can&apos;t record or identify calls without them.
           </li>
         </ol>
 
