@@ -65,6 +65,17 @@ export const api = {
     update: (id: string, body: { status?: string; agent_id?: string; contact_method?: string }) =>
       req<Lead>(`/api/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
+  followUps: {
+    list: (agentId?: string) =>
+      req<Client[]>(`/api/follow-ups/${agentId ? `?agent_id=${agentId}` : ""}`),
+    set: (clientId: string, followUpDate: string, note?: string) =>
+      req<Client>(`/api/follow-ups/${clientId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ follow_up_date: followUpDate, follow_up_note: note }),
+      }),
+    complete: (clientId: string) =>
+      req<{ completed: boolean }>(`/api/follow-ups/${clientId}`, { method: "DELETE" }),
+  },
   calls: {
     list: (agentId?: string) => req<Call[]>(`/api/calls/${agentId ? `?agent_id=${agentId}` : ""}`),
     get: (id: string) => req<Call>(`/api/calls/${id}`),
@@ -219,6 +230,7 @@ export interface Client {
   id: string; agent_id: string; name: string;
   phone?: string; email?: string; type: string; notes?: string;
   client_status?: string; location?: string;
+  follow_up_date?: string; follow_up_note?: string;
 }
 
 export interface ChatMessage {

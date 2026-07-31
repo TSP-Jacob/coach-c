@@ -176,6 +176,38 @@ TOOL_DECLARATIONS: list[dict] = [
             "required": ["client_name", "content"],
         },
     },
+    {
+        "name": "set_follow_up",
+        "description": (
+            "Schedule a follow-up date for a client so they appear in the "
+            "Follow-Ups section for that week. Use this right after creating a "
+            "new client — you should always ASK the user whether they want a "
+            "follow-up date before calling this — or any time the user wants to "
+            "schedule a check-in with an existing client. ONLY call after the "
+            "user has given and confirmed a specific date. If the name matches "
+            "no client or more than one, this returns that so you can ask the "
+            "user."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "client_name": {
+                    "type": "string",
+                    "description": "Name of the client to schedule a follow-up for.",
+                },
+                "follow_up_date": {
+                    "type": "string",
+                    "description": (
+                        "The follow-up date as an ISO date (YYYY-MM-DD). Resolve "
+                        "relative phrases like 'next Thursday' or 'in two weeks' "
+                        "to an absolute date yourself, using today's date given "
+                        "in this system prompt, before calling this tool."
+                    ),
+                },
+            },
+            "required": ["client_name", "follow_up_date"],
+        },
+    },
 ]
 
 
@@ -203,7 +235,19 @@ ACTION_INSTRUCTIONS = (
     "question. So always acknowledge first, then save.\n"
     "- If the user repeats a confirmation for something you've already saved, do "
     "NOT treat it as a new instruction — just reassure them it's already done.\n"
-    "- After a successful save, briefly tell the user what was recorded."
+    "- After a successful save, briefly tell the user what was recorded.\n"
+    "- Right after create_client SUCCEEDS for a brand-new client (created: true), "
+    "ALWAYS ask a short follow-up question like 'Want me to set a follow-up date "
+    "for them?' Do this every time, even if the user didn't mention one.\n"
+    "  - If they say no / not now, leave it — the client is already saved without "
+    "a follow-up date.\n"
+    "  - If they give a date (even relative, like 'next Thursday' or 'in two "
+    "weeks'), resolve it to an absolute YYYY-MM-DD date using today's date above, "
+    "read the resolved date back to confirm, and only after they confirm call "
+    "set_follow_up with that client's name and date.\n"
+    "- You can also use set_follow_up any other time the user wants to schedule "
+    "a check-in with an existing client — same rule: confirm the exact date "
+    "before calling it."
 )
 
 
@@ -562,6 +606,41 @@ def _add_note(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     return {"saved": True, "client": {"id": client["id"], "name": client.get("name")}}
 
 
+def _set_follow_up(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
+    name = (args.get("client_name") or "").strip()
+    follow_up_date = (args.get("follow_up_date") or "").strip()
+    if not name:
+        return {"saved": False, "error": "A client name is required — ask the user which client."}
+    if not follow_up_date:
+        return {"saved": False, "error": "A follow-up date is required."}
+
+    matches = _clients_for_name(db, agent_id, name)
+    if not matches:
+        return {
+            "saved": False, "status": "not_found",
+            "note": f"No client matching '{name}'. Ask the user, or create the client first.",
+        }
+    exact = [c for c in matches if (c.get("name") or "").strip().lower() == name.lower()]
+    candidates = exact or matches
+    if len(candidates) > 1:
+        return {
+            "saved": False, "status": "ambiguous",
+            "candidates": [{"id": c["id"], "name": c.get("name"), "phone": c.get("phone")} for c in candidates],
+            "note": "Several clients match — ask the user which one.",
+        }
+
+    client = candidates[0]
+    try:
+        db.table("clients").update({"follow_up_date": follow_up_date}).eq("id", client["id"]).execute()
+    except Exception as exc:
+        return {"saved": False, "error": f"Could not set follow-up: {exc}"}
+    return {
+        "saved": True,
+        "client": {"id": client["id"], "name": client.get("name")},
+        "follow_up_date": follow_up_date,
+    }
+
+
 _DISPATCH = {
     "search_calls": _search_calls,
     "get_client_history": _get_client_history,
@@ -570,6 +649,7 @@ _DISPATCH = {
     "find_client": _find_client,
     "create_client": _create_client,
     "add_note": _add_note,
+    "set_follow_up": _set_follow_up,
 }
 
 

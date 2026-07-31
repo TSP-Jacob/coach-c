@@ -104,6 +104,7 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
         tools=anthropic_tools(),
         tool_executor=tool_executor,
         industry=industry_domain(industry_mode),
+        tz_name=body.timezone,
     )
 
     save_messages(db, agent_id, [

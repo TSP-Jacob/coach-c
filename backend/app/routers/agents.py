@@ -20,6 +20,7 @@ FEATURE_DEFAULTS: dict[str, bool] = {
     "leads":           True,
     "voice_assistant": True,
     "notes":           True,
+    "follow_ups":      True,
 }
 
 

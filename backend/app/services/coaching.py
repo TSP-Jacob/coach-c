@@ -1,5 +1,6 @@
 import json
 import anthropic
+from datetime import date
 from pathlib import Path
 from app.config import settings
 
@@ -168,8 +169,14 @@ Return a JSON object with this exact structure:
         tools: list[dict] | None = None,
         tool_executor=None,
         industry: str | None = None,
+        tz_name: str | None = None,
     ) -> str:
-        system = f"{_SYSTEM_PROMPT}\n\nYou are speaking directly with {agent_name}. Be conversational, concise, and practical."
+        today = date.today().isoformat()
+        system = (
+            f"{_SYSTEM_PROMPT}\n\nYou are speaking directly with {agent_name}. Be "
+            f"conversational, concise, and practical. Today's date is {today}"
+            + (f" ({tz_name} time)." if tz_name else ".")
+        )
         if industry:
             system += f"\n\nThis organization operates in {industry}. Use {industry} terminology (e.g. clients, jobs, services) rather than real-estate-specific terms where possible."
 

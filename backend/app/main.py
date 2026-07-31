@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import calls, agents, chat, guidelines, billing, leads, notes, conversations, organization, consents, calendar, phone_numbers, voice, impersonate
+from app.routers import calls, agents, chat, guidelines, billing, leads, notes, conversations, organization, consents, calendar, phone_numbers, voice, impersonate, follow_ups
 from app.services.seeder import seed_default_guidelines
 
 
@@ -45,6 +45,7 @@ app.include_router(calendar.router,       prefix="/api/calendar",       tags=["c
 app.include_router(phone_numbers.router,  prefix="/api/phone-numbers",   tags=["phone-numbers"])
 app.include_router(voice.router,          prefix="/api/voice",           tags=["voice"])
 app.include_router(impersonate.router,    prefix="/api/admin/impersonate", tags=["admin"])
+app.include_router(follow_ups.router,     prefix="/api/follow-ups",      tags=["follow-ups"])
 
 
 @app.get("/health")

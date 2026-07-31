@@ -5,7 +5,7 @@ import { pollWhileProcessing } from "@/lib/swr";
 import { useSearchParams } from "next/navigation";
 import { api, Call, Client, Consent, Note } from "@/lib/api";
 import Link from "next/link";
-import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall, ShieldCheck } from "lucide-react";
+import { Phone, Mail, MapPin, Search, ChevronDown, ChevronUp, PhoneCall, ShieldCheck, CalendarClock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { clientTypeLabel, callTypeLabel } from "@/lib/industry";
 
@@ -140,6 +140,16 @@ export default function ClientsPage() {
   async function handleLocationSave(clientId: string, location: string) {
     mutateClients(prev => (prev ?? []).map(c => c.id === clientId ? { ...c, location } : c), false);
     await api.agents.updateClient(clientId, { location });
+  }
+
+  async function handleFollowUpSet(clientId: string, date: string) {
+    mutateClients(prev => (prev ?? []).map(c => c.id === clientId ? { ...c, follow_up_date: date } : c), false);
+    await api.followUps.set(clientId, date);
+  }
+
+  async function handleFollowUpComplete(clientId: string) {
+    mutateClients(prev => (prev ?? []).map(c => c.id === clientId ? { ...c, follow_up_date: undefined, follow_up_note: undefined } : c), false);
+    await api.followUps.complete(clientId);
   }
 
   return (
@@ -325,6 +335,16 @@ export default function ClientsPage() {
                       </div>
                     </div>
 
+                    {/* Follow-up */}
+                    <div>
+                      <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Follow-Up</p>
+                      <FollowUpField
+                        client={row}
+                        onSet={date => handleFollowUpSet(row.id, date)}
+                        onComplete={() => handleFollowUpComplete(row.id)}
+                      />
+                    </div>
+
                     {/* Consent badges */}
                     {(consentsMap[row.id]?.length ?? 0) > 0 && (
                       <div>
@@ -484,6 +504,71 @@ function LocationField({ value, onSave }: { value: string; onSave: (v: string) =
         ? <span className="text-charcoal group-hover:text-brand transition-colors">{value}</span>
         : <span className="text-muted italic group-hover:text-brand transition-colors">Add address…</span>
       }
+    </button>
+  );
+}
+
+/* Inline follow-up scheduler — shown on each client's expanded card */
+function FollowUpField({ client, onSet, onComplete }: {
+  client: Client; onSet: (date: string) => void; onComplete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(client.follow_up_date ?? "");
+
+  function commit() {
+    setEditing(false);
+    if (draft && draft !== client.follow_up_date) onSet(draft);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        <CalendarClock size={13} className="text-muted shrink-0" />
+        <input
+          type="date"
+          autoFocus
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") { setDraft(client.follow_up_date ?? ""); setEditing(false); }
+          }}
+          className="text-sm border border-brand px-2 py-0.5 focus:outline-none"
+        />
+      </div>
+    );
+  }
+
+  if (client.follow_up_date) {
+    const label = new Date(`${client.follow_up_date}T00:00:00`).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+    });
+    return (
+      <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={() => { setDraft(client.follow_up_date ?? ""); setEditing(true); }}
+          className="flex items-center gap-2 text-sm text-charcoal hover:text-brand transition-colors"
+        >
+          <CalendarClock size={13} className="text-muted shrink-0" /> {label}
+        </button>
+        <button
+          onClick={onComplete}
+          className="text-[10px] text-green-700 border border-green-200 px-2 py-0.5 hover:bg-green-50 transition-colors"
+        >
+          Mark Complete
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); setDraft(""); setEditing(true); }}
+      className="flex items-center gap-2 text-sm text-left group"
+    >
+      <CalendarClock size={13} className="text-muted shrink-0" />
+      <span className="text-muted italic group-hover:text-brand transition-colors">Create Follow-Up…</span>
     </button>
   );
 }
