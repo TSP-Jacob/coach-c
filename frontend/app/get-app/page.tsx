@@ -37,9 +37,11 @@ export default function GetAppPage() {
           <p className="text-[10px] tracking-widest uppercase text-muted">What this app does</p>
         </div>
         <p className="text-sm text-charcoal leading-relaxed">
-          Install this on your phone and it can screen incoming calls, letting you choose to
-          answer yourself, hand off to your AI phone agent, or decline. When you answer a call
-          yourself, it records and uploads it straight to your Coach-C account.
+          Install this on your phone and it screens incoming calls, letting you answer yourself
+          or decline. When you answer a call yourself, it records and uploads it straight to your
+          Coach-C account. Calls you don&apos;t answer are handled by your carrier&apos;s call
+          forwarding (set up separately) so they can still reach your AI phone agent instead of
+          voicemail.
         </p>
       </div>
 
