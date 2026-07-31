@@ -73,7 +73,6 @@ export default function Dashboard() {
   // While a call is still being analyzed server-side, keep the derived stats
   // and insights live too (they change when a call completes).
   const busy = pollWhileProcessing(calls) > 0;
-  const { data: stats = null } = useSWR(AGENT_ID ? ["stats", AGENT_ID] : null, () => api.agents.stats(AGENT_ID!), { refreshInterval: busy ? 5000 : 0 });
   const { data: insights = null } = useSWR(AGENT_ID ? ["insights", AGENT_ID] : null, () => api.calls.insights().catch(() => null), { refreshInterval: busy ? 5000 : 0 });
   const { data: overview } = useSWR(
     AGENT_ID ? ["dashboard-overview", AGENT_ID] : null,
@@ -112,7 +111,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats grid */}
-      <div className={`grid grid-cols-2 ${STATS_GRID_COLS[1 + (showLeads ? 1 : 0) + (showFollowUps ? 1 : 0) + (coaching ? 1 : 0)]} gap-px bg-warm-border border border-warm-border`}>
+      <div className={`grid grid-cols-2 ${STATS_GRID_COLS[1 + (showLeads ? 1 : 0) + (showFollowUps ? 1 : 0)]} gap-px bg-warm-border border border-warm-border`}>
         {showLeads && (
           <StatCard
             label="New Leads"
@@ -128,9 +127,6 @@ export default function Dashboard() {
             delta={overview && overview.overdue_follow_ups_count > 0 ? `${overview.overdue_follow_ups_count} overdue` : "scheduled"}
             href="/follow-ups"
           />
-        )}
-        {coaching && (
-          <StatCard label="Avg Score" value={stats?.average_score != null ? `${stats.average_score}` : "—"} delta="out of 100" />
         )}
         <OverviewCard text={overview?.overview} loading={!overview} />
       </div>
