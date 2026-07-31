@@ -1,8 +1,9 @@
+import hmac
 import os
 import re
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import Response
 import httpx
 from app.database import get_supabase
@@ -420,10 +421,18 @@ async def upload_call(
     file_modified_at: str | None = Form(None),
     file: UploadFile = File(...),
     jwt_agent_id: str | None = Depends(get_jwt_agent_id),
+    x_upload_secret: str | None = Header(None, alias="X-Upload-Secret"),
 ):
     effective_agent_id = jwt_agent_id or agent_id
     if not effective_agent_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+
+    # A logged-in browser session (jwt_agent_id) is already authenticated —
+    # the secret only gates the agent_id-only fallback used by server-to-server
+    # callers (e.g. an AI phone agent), and only when one is configured.
+    if not jwt_agent_id and settings.call_upload_secret:
+        if not x_upload_secret or not hmac.compare_digest(x_upload_secret, settings.call_upload_secret):
+            raise HTTPException(status_code=401, detail="Invalid upload secret")
 
     db = get_supabase()
     file_ext = file.filename.split(".")[-1] if "." in file.filename else "m4a"

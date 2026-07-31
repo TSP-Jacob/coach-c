@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     # Optional shared secret: if set, Twilio webhook URLs must include ?k=<secret>.
     twilio_webhook_secret: str = ""
+    # Optional shared secret for server-to-server call uploads (e.g. an AI phone
+    # agent). Only enforced when the request has no logged-in JWT — browser
+    # uploads from a signed-in user are unaffected either way.
+    call_upload_secret: str = ""
 
     class Config:
         env_file = ".env"
