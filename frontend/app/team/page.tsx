@@ -19,6 +19,7 @@ const FEATURES: { key: string; label: string; hint: string }[] = [
   { key: "voice_assistant", label: "Voice Assistant", hint: "AI assistant (chat + voice)" },
   { key: "notes",           label: "Notes",           hint: "Client notes section" },
   { key: "follow_ups",      label: "Follow-Ups",      hint: "Follow-up reminders section" },
+  { key: "tasks",           label: "Tasks",           hint: "Manager-assigned tasks section" },
 ];
 
 function Toggle({ on, disabled, onClick }: { on: boolean; disabled?: boolean; onClick: () => void }) {

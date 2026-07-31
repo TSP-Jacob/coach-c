@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mic, X, Minus } from "lucide-react";
 import VoiceAssistant from "./VoiceAssistant";
 import { clsx } from "clsx";
+import { onOpenVoiceAssistant } from "@/lib/assistantBus";
 
 export default function FloatingAssistant() {
   const [open,      setOpen]      = useState(false);
@@ -18,6 +19,13 @@ export default function FloatingAssistant() {
     });
     setMinimised(false);
   };
+
+  // Let other pages (e.g. Tasks' "Create with Voice") open this panel.
+  useEffect(() => onOpenVoiceAssistant(() => {
+    setOpen(true);
+    setMinimised(false);
+    setSessionKey((k) => k + 1);
+  }), []);
 
   return (
     <>

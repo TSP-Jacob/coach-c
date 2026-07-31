@@ -29,6 +29,7 @@ export const FEATURE_DEFAULTS: Features = {
   voice_assistant: true,
   notes: true,
   follow_ups: true,
+  tasks: true,
 };
 
 function mergeFeatures(f?: Features | null): Features {

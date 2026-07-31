@@ -79,6 +79,19 @@ export const api = {
     complete: (clientId: string) =>
       req<{ completed: boolean }>(`/api/follow-ups/${clientId}`, { method: "DELETE" }),
   },
+  tasks: {
+    list: (assignedTo?: string, status?: string) => {
+      const p = new URLSearchParams();
+      if (assignedTo) p.set("assigned_to", assignedTo);
+      if (status)     p.set("status", status);
+      return req<Task[]>(`/api/tasks/?${p}`);
+    },
+    create: (body: { assigned_to: string; title: string; description?: string; due_date?: string }) =>
+      req<Task>(`/api/tasks/`, { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: Partial<{ status: string; title: string; description: string; due_date: string; assigned_to: string }>) =>
+      req<Task>(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (id: string) => req(`/api/tasks/${id}`, { method: "DELETE" }),
+  },
   calls: {
     list: (agentId?: string) => req<Call[]>(`/api/calls/${agentId ? `?agent_id=${agentId}` : ""}`),
     get: (id: string) => req<Call>(`/api/calls/${id}`),
@@ -354,6 +367,22 @@ export interface DashboardOverview {
   follow_ups_count: number;
   overdue_follow_ups_count: number;
   overview: string;
+}
+
+export interface Task {
+  id: string;
+  brokerage_id: string;
+  assigned_to: string;
+  created_by: string | null;
+  title: string;
+  description?: string;
+  status: "pending" | "in_progress" | "done";
+  due_date?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at?: string;
+  assignee?: { id: string; name: string };
+  creator?: { id: string; name: string };
 }
 
 export interface Lead {

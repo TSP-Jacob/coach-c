@@ -208,6 +208,44 @@ TOOL_DECLARATIONS: list[dict] = [
             "required": ["client_name", "follow_up_date"],
         },
     },
+    {
+        "name": "create_task",
+        "description": (
+            "Create and assign a task to a teammate — this is the default way "
+            "to create tasks. ONLY managers and admins are allowed to do this; "
+            "if the caller isn't one, this tool returns a permission error and "
+            "you should tell them only managers can assign tasks. ALWAYS "
+            "confirm the teammate's name, the task itself, and the due date "
+            "(if any) with the user before calling this."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "assignee_name": {
+                    "type": "string",
+                    "description": "Name of the teammate to assign the task to.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Short title/summary of the task.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional extra detail about the task.",
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": (
+                        "Optional ISO date (YYYY-MM-DD) the task is due. Resolve "
+                        "relative phrases like 'by Friday' to an absolute date "
+                        "yourself, using today's date given in this system "
+                        "prompt, before calling this tool."
+                    ),
+                },
+            },
+            "required": ["assignee_name", "title"],
+        },
+    },
 ]
 
 
@@ -247,7 +285,15 @@ ACTION_INSTRUCTIONS = (
     "set_follow_up with that client's name and date.\n"
     "- You can also use set_follow_up any other time the user wants to schedule "
     "a check-in with an existing client — same rule: confirm the exact date "
-    "before calling it."
+    "before calling it.\n"
+    "- If the user is a manager or admin and wants to assign work to a "
+    "teammate ('assign X a task', 'have Y follow up on...', 'create a task "
+    "for...'), use create_task — this is the default, preferred way to "
+    "create tasks. Confirm the teammate's name, the task, and the due date "
+    "(if any) before calling it. If create_task comes back with a "
+    "permission error, tell the user only managers can assign tasks. If it "
+    "comes back ambiguous or not_found for the teammate name, ask the user "
+    "to clarify."
 )
 
 
@@ -641,6 +687,58 @@ def _set_follow_up(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     }
 
 
+def _create_task(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
+    caller = db.table("agents").select("id, role, brokerage_id").eq("id", agent_id).single().execute().data
+    if not caller or caller.get("role") not in ("admin", "manager"):
+        return {"created": False, "error": "Only managers or admins can assign tasks."}
+
+    name = (args.get("assignee_name") or "").strip()
+    title = (args.get("title") or "").strip()
+    if not name:
+        return {"created": False, "error": "A teammate name is required."}
+    if not title:
+        return {"created": False, "error": "A task title is required."}
+
+    rows = (
+        db.table("agents").select("id, name")
+        .eq("brokerage_id", caller["brokerage_id"])
+        .ilike("name", f"%{name}%")
+        .execute().data
+        or []
+    )
+    if not rows:
+        return {
+            "created": False, "status": "not_found",
+            "note": f"No teammate matching '{name}'. Ask the user to clarify.",
+        }
+    exact = [r for r in rows if (r.get("name") or "").strip().lower() == name.lower()]
+    candidates = exact or rows
+    if len(candidates) > 1:
+        return {
+            "created": False, "status": "ambiguous",
+            "candidates": [{"id": r["id"], "name": r.get("name")} for r in candidates],
+            "note": "Several teammates match — ask the user which one.",
+        }
+
+    assignee = candidates[0]
+    payload = {
+        "brokerage_id": caller["brokerage_id"],
+        "assigned_to": assignee["id"],
+        "created_by": agent_id,
+        "title": title,
+        "description": (args.get("description") or "").strip() or None,
+        "due_date": (args.get("due_date") or "").strip() or None,
+    }
+    try:
+        task = db.table("tasks").insert(payload).execute().data[0]
+    except Exception as exc:
+        return {"created": False, "error": f"Could not create task: {exc}"}
+    return {
+        "created": True,
+        "task": {"id": task["id"], "title": task["title"], "assignee": assignee["name"], "due_date": task.get("due_date")},
+    }
+
+
 _DISPATCH = {
     "search_calls": _search_calls,
     "get_client_history": _get_client_history,
@@ -650,6 +748,7 @@ _DISPATCH = {
     "create_client": _create_client,
     "add_note": _add_note,
     "set_follow_up": _set_follow_up,
+    "create_task": _create_task,
 }
 
 
