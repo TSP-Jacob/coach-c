@@ -327,5 +327,8 @@ def update_phone_agent(
 def delete_phone_agent(brokerage_id: str, deployment_id: str, agent_id: str = Depends(get_jwt_agent_id)):
     _require_admin_caller(agent_id)
     db = get_supabase()
-    db.table("phone_agent_deployments").delete().eq("id", deployment_id).eq("brokerage_id", brokerage_id).execute()
+    result = (db.table("phone_agent_deployments").delete()
+              .eq("id", deployment_id).eq("brokerage_id", brokerage_id).execute())
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Deployment not found")
     return {"deleted": True}
