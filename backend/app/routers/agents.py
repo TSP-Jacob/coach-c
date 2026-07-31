@@ -168,6 +168,10 @@ class RoleUpdate(BaseModel):
     role: str
 
 
+class OrganizationAssign(BaseModel):
+    brokerage_id: str
+
+
 class FeatureUpdate(BaseModel):
     feature: str
     enabled: bool
@@ -204,6 +208,19 @@ def update_agent_role(agent_id: str, body: RoleUpdate,
     db = get_supabase()
     db.table("agents").update({"role": body.role}).eq("id", agent_id).execute()
     return {"ok": True, "agent_id": agent_id, "role": body.role}
+
+
+@router.patch("/{agent_id}/organization")
+def update_agent_organization(agent_id: str, body: OrganizationAssign,
+                              jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """Admin-only: move an agent to a different organization (brokerage)."""
+    _require_admin(jwt_agent_id)
+    db = get_supabase()
+    org = db.table("brokerages").select("id, name").eq("id", body.brokerage_id).maybe_single().execute()
+    if not org or not org.data:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    db.table("agents").update({"brokerage_id": body.brokerage_id}).eq("id", agent_id).execute()
+    return {"ok": True, "agent_id": agent_id, "brokerage_id": body.brokerage_id, "brokerage_name": org.data["name"]}
 
 
 @router.patch("/{agent_id}/features")

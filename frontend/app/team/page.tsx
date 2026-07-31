@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, AdminAgent } from "@/lib/api";
+import { api, AdminAgent, OrgProfile } from "@/lib/api";
 import { useAuth, FEATURE_DEFAULTS } from "@/lib/auth";
-import { Users, Shield } from "lucide-react";
+import { Users, Shield, Plus } from "lucide-react";
 
 const ROLES: AdminAgent["role"][] = ["admin", "manager", "employee"];
 
@@ -43,16 +43,22 @@ function Toggle({ on, disabled, onClick }: { on: boolean; disabled?: boolean; on
 export default function TeamPage() {
   const { role, agentId, loading: authLoading } = useAuth();
   const [agents, setAgents] = useState<AdminAgent[]>([]);
+  const [orgs, setOrgs] = useState<OrgProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [savingOrgId, setSavingOrgId] = useState<string | null>(null);
   const [savingFeat, setSavingFeat] = useState<string | null>(null);
+  const [showNewOrg, setShowNewOrg] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [creatingOrg, setCreatingOrg] = useState(false);
 
   const load = () => {
     api.agents.listAll()
       .then(setAgents)
       .catch(e => setError(String(e.message || e)))
       .finally(() => setLoading(false));
+    api.organization.listAll().then(setOrgs).catch(() => {});
   };
 
   useEffect(() => { if (!authLoading) load(); /* eslint-disable-next-line */ }, [authLoading]);
@@ -69,6 +75,41 @@ export default function TeamPage() {
       setError(String(e.message || e));
     } finally {
       setSavingId(null);
+    }
+  };
+
+  const changeOrganization = async (id: string, brokerageId: string) => {
+    setSavingOrgId(id);
+    setError(null);
+    const prev = agents;
+    const org = orgs.find(o => o.id === brokerageId);
+    setAgents(a => a.map(x => x.id === id
+      ? { ...x, brokerage_id: brokerageId, brokerages: org ? { name: org.name } : x.brokerages }
+      : x));
+    try {
+      await api.agents.updateOrganization(id, brokerageId);
+    } catch (e: any) {
+      setAgents(prev); // revert on failure
+      setError(String(e.message || e));
+    } finally {
+      setSavingOrgId(null);
+    }
+  };
+
+  const createOrganization = async () => {
+    const name = newOrgName.trim();
+    if (!name) return;
+    setCreatingOrg(true);
+    setError(null);
+    try {
+      const org = await api.organization.create(name);
+      setOrgs(prev => [...prev, org].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewOrgName("");
+      setShowNewOrg(false);
+    } catch (e: any) {
+      setError(String(e.message || e));
+    } finally {
+      setCreatingOrg(false);
     }
   };
 
@@ -102,11 +143,45 @@ export default function TeamPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Team</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          All accounts in your organization. Set each person&apos;s role and toggle which Coach-C features they can use.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Team</h1>
+          <p className="text-sm text-gray-400 mt-1">
+            All accounts across every organization. Set each person&apos;s role, organization, and which Coach-C features they can use.
+          </p>
+        </div>
+        {!showNewOrg ? (
+          <button
+            onClick={() => setShowNewOrg(true)}
+            className="flex items-center gap-1.5 text-sm text-brand border border-brand/30 rounded-lg px-3 py-2 hover:bg-brand-light transition-colors shrink-0">
+            <Plus size={14} /> New Organization
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              autoFocus
+              value={newOrgName}
+              onChange={e => setNewOrgName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") createOrganization();
+                if (e.key === "Escape") { setShowNewOrg(false); setNewOrgName(""); }
+              }}
+              placeholder="Organization name…"
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-brand w-48"
+            />
+            <button
+              onClick={createOrganization}
+              disabled={creatingOrg || !newOrgName.trim()}
+              className="text-sm bg-brand text-white rounded-lg px-3 py-2 hover:opacity-90 disabled:opacity-50 transition-opacity">
+              {creatingOrg ? "Creating…" : "Create"}
+            </button>
+            <button
+              onClick={() => { setShowNewOrg(false); setNewOrgName(""); }}
+              className="text-sm text-gray-400 hover:text-gray-600 px-1">
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -128,28 +203,46 @@ export default function TeamPage() {
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
                 {list.map(a => (
                   <div key={a.id} className="p-4 space-y-4">
-                    {/* Identity + role */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-brand-light flex items-center justify-center text-brand font-bold text-xs">
+                    {/* Identity + role + organization */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-brand-light flex items-center justify-center text-brand font-bold text-xs shrink-0">
                           {(a.name || a.email).split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-sm font-medium flex items-center gap-2">
                             {a.name || "Unnamed"}
                             {a.id === agentId && <span className="text-[10px] text-gray-400">(you)</span>}
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${roleBadge[a.role]}`}>{a.role}</span>
                           </p>
-                          <p className="text-xs text-gray-400">{a.email}{a.brokerages?.name ? ` · ${a.brokerages.name}` : ""}</p>
+                          <p className="text-xs text-gray-400 truncate">{a.email}</p>
                         </div>
                       </div>
-                      <select
-                        value={a.role}
-                        disabled={savingId === a.id}
-                        onChange={e => changeRole(a.id, e.target.value)}
-                        className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-brand disabled:opacity-50">
-                        {ROLES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
+                      <div className="flex items-center gap-2 flex-wrap pl-12 sm:pl-0">
+                        <div>
+                          <label className="block text-[10px] text-gray-400 mb-1">Role</label>
+                          <select
+                            value={a.role}
+                            disabled={savingId === a.id}
+                            onChange={e => changeRole(a.id, e.target.value)}
+                            className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-brand disabled:opacity-50">
+                            {ROLES.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-400 mb-1">Organization</label>
+                          <select
+                            value={a.brokerage_id ?? ""}
+                            disabled={savingOrgId === a.id}
+                            onChange={e => changeOrganization(a.id, e.target.value)}
+                            className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-brand disabled:opacity-50 max-w-[180px]">
+                            {a.brokerages?.name && !orgs.some(o => o.id === a.brokerage_id) && (
+                              <option value={a.brokerage_id}>{a.brokerages.name}</option>
+                            )}
+                            {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Feature toggles */}

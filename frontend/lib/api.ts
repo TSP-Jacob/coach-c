@@ -118,6 +118,10 @@ export const api = {
     listAll: () => req<AdminAgent[]>(`/api/agents/all`),
     updateRole: (id: string, role: string) =>
       req<{ ok: boolean; role: string }>(`/api/agents/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+    // Admin: reassign an agent to a different organization
+    updateOrganization: (id: string, brokerageId: string) =>
+      req<{ ok: boolean; brokerage_id: string; brokerage_name: string }>(
+        `/api/agents/${id}/organization`, { method: "PATCH", body: JSON.stringify({ brokerage_id: brokerageId }) }),
     // Admin: toggle a single per-user feature flag
     updateFeature: (id: string, feature: string, enabled: boolean) =>
       req<{ ok: boolean; features: Record<string, boolean> }>(
