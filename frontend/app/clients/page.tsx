@@ -39,6 +39,16 @@ function formatDuration(secs?: number) {
   return m > 0 ? `${m}m${s > 0 ? ` ${s}s` : ""}` : `${s}s`;
 }
 
+function relativeDateLabel(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 interface LatestActivity {
   kind: "call" | "note";
   text: string;
@@ -132,6 +142,22 @@ export default function ClientsPage() {
       (r.email ?? "").toLowerCase().includes(search.toLowerCase())
     ), [rows, search]);
 
+  // Pinned strip — the 5 most recently created clients, regardless of search/filter.
+  const recentRows = useMemo(() =>
+    [...rows]
+      .filter(r => r.created_at)
+      .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+      .slice(0, 5),
+    [rows]);
+
+  function jumpToClient(id: string) {
+    setSearch("");
+    setExpandedId(id);
+    setTimeout(() => {
+      document.getElementById(`client-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  }
+
   async function handleStatusChange(clientId: string, newStatus: string) {
     mutateClients(prev => (prev ?? []).map(c => c.id === clientId ? { ...c, client_status: newStatus } : c), false);
     await api.agents.updateClient(clientId, { client_status: newStatus });
@@ -161,6 +187,35 @@ export default function ClientsPage() {
           {clients.length} profile{clients.length !== 1 ? "s" : ""}
         </p>
       </div>
+
+      {/* Recently Added — pinned strip of the 5 newest clients */}
+      {recentRows.length > 0 && (
+        <div className="space-y-2.5">
+          <p className="text-[10px] tracking-widest uppercase text-muted">Recently Added</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {recentRows.map(r => (
+              <button
+                key={r.id}
+                onClick={() => jumpToClient(r.id)}
+                className="text-left bg-white border border-warm-border hover:border-brand/40 hover:bg-cream transition-colors px-3.5 py-3 group"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-charcoal truncate group-hover:text-brand transition-colors">
+                    {r.name}
+                  </p>
+                  <span className="text-[9px] tracking-wide uppercase px-1.5 py-0.5 border border-brand/30 bg-brand-light text-brand shrink-0">
+                    New
+                  </span>
+                </div>
+                <p className="text-xs text-muted mt-1 truncate">{clientTypeLabel(industryMode, r.type)}</p>
+                {r.created_at && (
+                  <p className="text-[10px] text-muted mt-2">{relativeDateLabel(r.created_at)}</p>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative max-w-sm">

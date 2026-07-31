@@ -231,6 +231,7 @@ export interface Client {
   phone?: string; email?: string; type: string; notes?: string;
   client_status?: string; location?: string;
   follow_up_date?: string; follow_up_note?: string;
+  created_at?: string;
 }
 
 export interface ChatMessage {
