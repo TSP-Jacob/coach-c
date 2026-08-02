@@ -9,7 +9,7 @@ import TranscriptViewer from "@/components/TranscriptViewer";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, PhoneIncoming, PhoneOutgoing } from "lucide-react";
 
 const CALL_TYPE_LABELS: Record<string, string> = {
   prospecting: "Prospecting",
@@ -128,6 +128,12 @@ export default function CallDetailPage() {
               </h1>
             )}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+              {call.direction === "inbound" && (
+                <p className="text-xs text-muted flex items-center gap-1"><PhoneIncoming size={12} /> Inbound</p>
+              )}
+              {call.direction === "outbound" && (
+                <p className="text-xs text-muted flex items-center gap-1"><PhoneOutgoing size={12} /> Outbound</p>
+              )}
               <p className="text-xs text-muted">{dateFormatted}{timeFormatted ? ` · ${timeFormatted}` : ""}</p>
               {call.duration_seconds && (
                 <p className="text-xs text-muted">

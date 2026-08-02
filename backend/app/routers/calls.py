@@ -516,7 +516,7 @@ def list_calls(
         raise HTTPException(status_code=401, detail="Authentication required")
     db = get_supabase()
     result = db.table("calls").select(
-        "id, client_id, call_date, call_type, overall_score, status, duration_seconds, created_at, coaching_report, clients(name)"
+        "id, client_id, call_date, call_type, overall_score, status, duration_seconds, direction, created_at, coaching_report, clients(name)"
     ).eq("agent_id", effective_agent_id).order("created_at", desc=True).execute()
     return result.data
 

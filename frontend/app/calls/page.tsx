@@ -7,7 +7,7 @@ import CallUpload from "@/components/CallUpload";
 import ScoreBadge from "@/components/ScoreBadge";
 import { useToast } from "@/components/Toast";
 import Link from "next/link";
-import { Trash2, Search, X } from "lucide-react";
+import { Trash2, Search, X, PhoneIncoming, PhoneOutgoing } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 const CALL_TYPE_LABELS: Record<string, string> = {
@@ -200,7 +200,17 @@ export default function CallsPage() {
                   )}
                 </div>
                 <Link href={`/calls/${call.id}`} className="block">
-                  <p className="text-xs text-muted mt-0.5">
+                  <p className="text-xs text-muted mt-0.5 flex items-center gap-1 flex-wrap">
+                    {call.direction === "inbound" ? (
+                      <span className="inline-flex items-center gap-1 text-muted" title="Inbound call">
+                        <PhoneIncoming size={11} /> Inbound
+                      </span>
+                    ) : call.direction === "outbound" ? (
+                      <span className="inline-flex items-center gap-1 text-muted" title="Outbound call">
+                        <PhoneOutgoing size={11} /> Outbound
+                      </span>
+                    ) : null}
+                    {call.direction && " · "}
                     {CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified"} ·{" "}
                     {call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"} ·{" "}
                     {new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}

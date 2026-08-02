@@ -201,7 +201,7 @@ export const api = {
 export interface Call {
   id: string; agent_id: string; client_id?: string;
   call_date?: string; call_type?: string; duration_seconds?: number;
-  status: string; overall_score?: number;
+  status: string; overall_score?: number; direction?: string;
   transcript?: { utterances: Utterance[]; full_text: string };
   coaching_report?: CoachingReport;
   audio_url?: string;
