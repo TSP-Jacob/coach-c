@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Coach-C</string>
-    <string name="accessibility_service_label">Coach-C Voice Assistant Trigger</string>
-    <string name="accessibility_service_description">Detects a double-press of the power button to launch your Coach-C AI voice assistant.</string>
-    <string name="drawer_open">Open navigation drawer</string>
-    <string name="drawer_close">Close navigation drawer</string>
 </resources>

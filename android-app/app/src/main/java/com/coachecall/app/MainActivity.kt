@@ -3,36 +3,53 @@ package com.coachecall.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
+import android.net.Uri
 import android.os.Bundle
+import android.os.Message
+import android.view.View
+import android.webkit.CookieManager
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.GravityCompat
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
 import com.coachecall.app.databinding.ActivityMainBinding
-import kotlinx.coroutines.launch
 
+/**
+ * This app is a thin shell: it just shows the real Coach-C site in a
+ * WebView, so the phone experience is always exactly what's live on the
+ * web — no separate app release needed for UI/feature changes. See
+ * project_coachc_dashboard_app memory for why this replaced an earlier
+ * native reimplementation (which kept drifting from the backend's actual
+ * behavior — five real bugs found in one session).
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var auth: AuthRepository
+    private val webUrlHost = Uri.parse(BuildConfig.WEB_URL).host
 
-    // The persistent "Ask Coach-C" notification is a microphone-type
-    // foreground service — Android 14 throws a SecurityException and kills
-    // the app outright if we try to start it without RECORD_AUDIO already
-    // granted (confirmed on a real device: this crashed on every launch
-    // since the app never actually requested it). Request it, and only
-    // start the service if it's actually granted; declining just means that
-    // one quick-access notification doesn't appear, nothing else breaks.
+    private var pendingPermissionRequest: PermissionRequest? = null
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
     private val micPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        if (results[Manifest.permission.RECORD_AUDIO] == true) {
-            AssistantNotificationService.start(this)
-        }
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val request = pendingPermissionRequest
+        pendingPermissionRequest = null
+        if (request == null) return@registerForActivityResult
+        if (granted) request.grant(request.resources) else request.deny()
+    }
+
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        filePathCallback?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
+        filePathCallback = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,116 +57,114 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        auth = AuthRepository.getInstance(this)
-
-        if (!auth.isLoggedIn()) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
+        setupWebView()
+        if (savedInstanceState == null) {
+            binding.webView.loadUrl(BuildConfig.WEB_URL)
         }
 
-        setSupportActionBar(binding.toolbar)
-        val toggle = ActionBarDrawerToggle(
-            this, binding.drawerLayout, binding.toolbar,
-            R.string.drawer_open, R.string.drawer_close
-        )
-        binding.drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
+        binding.swipeRefresh.setOnRefreshListener { binding.webView.reload() }
 
-        binding.navView.setNavigationItemSelectedListener { item ->
-            if (item.itemId == R.id.nav_sign_out) {
-                signOut()
-                return@setNavigationItemSelectedListener true
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (binding.webView.canGoBack()) binding.webView.goBack() else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
             }
-            val fragment: Fragment? = when (item.itemId) {
-                R.id.nav_dashboard -> DashboardFragment()
-                R.id.nav_leads -> LeadsFragment()
-                R.id.nav_calls -> CallsFragment()
-                R.id.nav_clients -> ClientsFragment()
-                R.id.nav_follow_ups -> FollowUpsFragment()
-                R.id.nav_tasks -> TasksFragment()
-                R.id.nav_chat -> ChatFragment()
-                else -> null
+        })
+    }
+
+    private fun setupWebView() {
+        val webView = binding.webView
+        val settings = webView.settings
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true // Supabase session persistence lives here
+        settings.mediaPlaybackRequiresUserGesture = false
+        settings.userAgentString = "${settings.userAgentString} CoachCAndroidApp/${BuildConfig.VERSION_NAME}"
+
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val uri = request.url
+                return when (uri.scheme) {
+                    "http", "https" -> {
+                        if (uri.host == webUrlHost) {
+                            false // same site — let the WebView load it normally
+                        } else {
+                            startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            true
+                        }
+                    }
+                    "mailto", "tel" -> {
+                        startActivity(Intent(Intent.ACTION_VIEW, uri))
+                        true
+                    }
+                    else -> false
+                }
             }
-            if (fragment != null) {
-                showFragment(fragment, item.title.toString())
-                item.isChecked = true
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                super.onPageFinished(view, url)
+                binding.progressBar.visibility = View.GONE
+                binding.swipeRefresh.isRefreshing = false
             }
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-            true
         }
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            AssistantNotificationService.start(this)
-        } else {
-            val toRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                toRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+        webView.webChromeClient = object : WebChromeClient() {
+            // Bridges the web page's own getUserMedia() mic prompt (used by
+            // lib/voiceClient.ts and the Notes dictation feature) to this
+            // app's runtime RECORD_AUDIO permission.
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val needsAudio = request.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                if (!needsAudio) { request.deny(); return }
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    request.grant(request.resources)
+                } else {
+                    pendingPermissionRequest = request
+                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
             }
-            micPermissionLauncher.launch(toRequest.toTypedArray())
-        }
 
-        // Refresh the token ahead of expiry, and gate the drawer's optional
-        // sections by the agent's feature flags (same defaults/keys as the
-        // web Sidebar). If agentId is already cached this runs in the
-        // background and the dashboard shows immediately; if it's NOT
-        // cached yet (older session, or the very first launch after
-        // sign-in), every fragment needs it before their own data calls can
-        // work at all, so first paint waits on this instead of racing it —
-        // confirmed on a real device that showing the fragment first meant
-        // it read a still-null agentId and silently gave up before this
-        // finished resolving it.
-        val hadAgentId = auth.getAgentId() != null
-        if (hadAgentId && savedInstanceState == null) {
-            showFragment(DashboardFragment(), "Dashboard")
-            binding.navView.setCheckedItem(R.id.nav_dashboard)
-        }
-        lifecycleScope.launch {
-            auth.ensureFreshAccessToken()
-            val profileResult = runCatching { ApiClient.getService(this@MainActivity).getMyProfile() }
-            profileResult.onFailure { android.util.Log.e("MainActivity", "getMyProfile failed", it) }
-            val profile = profileResult.getOrNull()
-            if (profile != null) {
-                if (auth.getAgentId() == null) auth.saveAgentId(profile.id)
-                applyFeatureFlags(profile.featureFlags)
+            // target="_blank" links open a new WebView by default, which
+            // would otherwise just silently do nothing — hand the URL back
+            // to our single WebView instead.
+            override fun onCreateWindow(
+                view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message
+            ): Boolean {
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                val redirectWebView = WebView(this@MainActivity)
+                redirectWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                        view.loadUrl(request.url.toString())
+                        return true
+                    }
+                }
+                transport.webView = redirectWebView
+                resultMsg.sendToTarget()
+                return true
             }
-            if (!hadAgentId && savedInstanceState == null) {
-                showFragment(DashboardFragment(), "Dashboard")
-                binding.navView.setCheckedItem(R.id.nav_dashboard)
+
+            override fun onShowFileChooser(
+                webView: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?
+            ): Boolean {
+                filePathCallback = callback
+                fileChooserLauncher.launch("*/*")
+                return true
             }
         }
     }
 
-    private fun applyFeatureFlags(flags: Map<String, Boolean>?) {
-        val menu = binding.navView.menu
-        menu.findItem(R.id.nav_leads)?.isVisible = flags?.get("leads") != false
-        menu.findItem(R.id.nav_follow_ups)?.isVisible = flags?.get("follow_ups") != false
-        menu.findItem(R.id.nav_tasks)?.isVisible = flags?.get("tasks") != false
-        menu.findItem(R.id.nav_chat)?.isVisible = flags?.get("voice_assistant") != false
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        binding.webView.saveState(outState)
     }
 
-    private fun showFragment(fragment: Fragment, title: String) {
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.fragmentContainer, fragment)
-            .commit()
-        supportActionBar?.title = title
-    }
-
-    override fun onBackPressed() {
-        if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
-            binding.drawerLayout.closeDrawer(GravityCompat.START)
-        } else {
-            super.onBackPressed()
-        }
-    }
-
-    fun signOut() {
-        AssistantNotificationService.stop(this)
-        lifecycleScope.launch {
-            auth.signOut()
-            ApiClient.reset()
-            startActivity(Intent(this@MainActivity, LoginActivity::class.java))
-            finish()
-        }
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        super.onRestoreInstanceState(savedInstanceState)
+        binding.webView.restoreState(savedInstanceState)
     }
 }

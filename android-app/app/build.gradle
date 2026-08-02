@@ -17,16 +17,15 @@ android {
         applicationId "com.coachecall.app"
         minSdk 29
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "2.0"
 
-        buildConfigField "String", "SUPABASE_URL", "\"${localProperties['SUPABASE_URL'] ?: ''}\""
-        buildConfigField "String", "SUPABASE_ANON_KEY", "\"${localProperties['SUPABASE_ANON_KEY'] ?: ''}\""
-        // coach-c-theta.vercel.app is the Next.js frontend, not the API — it
-        // 404s on every backend route. The FastAPI backend is a separate
-        // Railway service; confirmed by grepping the live frontend's own JS
-        // bundle for which host it actually calls client-side.
-        buildConfigField "String", "API_BASE_URL", "\"${localProperties['API_BASE_URL'] ?: 'https://coach-c-production.up.railway.app'}\""
+        // This app is a thin WebView shell around the real Coach-C site —
+        // UI/feature changes ship via a normal web deploy, no app rebuild
+        // needed. See project_coachc_dashboard_app memory for why (the
+        // native reimplementation kept drifting from the backend's actual
+        // behavior — five real bugs in one session).
+        buildConfigField "String", "WEB_URL", "\"${localProperties['WEB_URL'] ?: 'https://coach-c-theta.vercel.app'}\""
     }
 
     signingConfigs {
@@ -69,26 +68,5 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
-    implementation 'androidx.cardview:cardview:1.0.0'
-    implementation 'androidx.drawerlayout:drawerlayout:1.2.0'
-    implementation 'androidx.fragment:fragment-ktx:1.6.2'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
-    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.7.0'
-    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
-
-    // Networking
-    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
-
-    // Audio playback
-    implementation 'androidx.media3:media3-exoplayer:1.2.1'
-    implementation 'androidx.media3:media3-ui:1.2.1'
-
-    // Coroutines
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
 }
