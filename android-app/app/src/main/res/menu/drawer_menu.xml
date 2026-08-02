@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item android:id="@+id/nav_dashboard"
+            android:icon="@android:drawable/ic_menu_today"
+            android:title="Dashboard" />
+        <item android:id="@+id/nav_leads"
+            android:icon="@android:drawable/ic_menu_add"
+            android:title="Leads" />
+        <item android:id="@+id/nav_calls"
+            android:icon="@android:drawable/ic_menu_call"
+            android:title="Calls" />
+        <item android:id="@+id/nav_clients"
+            android:icon="@android:drawable/ic_menu_myplaces"
+            android:title="Clients" />
+        <item android:id="@+id/nav_follow_ups"
+            android:icon="@android:drawable/ic_menu_recent_history"
+            android:title="Follow-Ups" />
+        <item android:id="@+id/nav_tasks"
+            android:icon="@android:drawable/ic_menu_agenda"
+            android:title="Tasks" />
+        <item android:id="@+id/nav_chat"
+            android:icon="@android:drawable/ic_menu_send"
+            android:title="Assistant" />
+    </group>
+    <item android:title="">
+        <menu>
+            <item android:id="@+id/nav_sign_out"
+                android:icon="@android:drawable/ic_lock_power_off"
+                android:title="Sign Out" />
+        </menu>
+    </item>
+</menu>

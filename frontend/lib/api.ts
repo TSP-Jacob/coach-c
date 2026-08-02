@@ -66,7 +66,8 @@ export const api = {
       req<Lead>(`/api/leads/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
   app: {
-    androidDownload: () => req<{ url: string }>(`/api/app/android/download`),
+    androidDownload: (app: "recorder" | "dashboard" = "recorder") =>
+      req<{ url: string }>(`/api/app/android/download?app=${app}`),
   },
   dashboard: {
     overview: () => req<DashboardOverview>(`/api/dashboard/overview`),

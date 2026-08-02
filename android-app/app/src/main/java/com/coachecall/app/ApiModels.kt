@@ -8,7 +8,8 @@ data class AgentProfile(
     val email: String,
     @SerializedName("brokerage_id") val brokerageId: String?,
     @SerializedName("brokerage_name") val brokerageName: String?,
-    @SerializedName("avatar_url") val avatarUrl: String?
+    @SerializedName("avatar_url") val avatarUrl: String?,
+    @SerializedName("feature_flags") val featureFlags: Map<String, Boolean>?
 )
 
 data class AgentStats(
@@ -67,13 +68,70 @@ data class CoachingReport(
 
 data class Client(
     val id: String,
-    @SerializedName("agent_id") val agentId: String,
+    @SerializedName("agent_id") val agentId: String?,
     val name: String,
     val phone: String?,
     val email: String?,
     val type: String?,
     val notes: String?,
+    @SerializedName("created_at") val createdAt: String?,
+    @SerializedName("follow_up_date") val followUpDate: String?,
+    @SerializedName("follow_up_note") val followUpNote: String?
+)
+
+data class FollowUpSetRequest(
+    @SerializedName("follow_up_date") val followUpDate: String,
+    @SerializedName("follow_up_note") val followUpNote: String? = null
+)
+
+data class Lead(
+    val id: String,
+    @SerializedName("agent_id") val agentId: String?,
+    val name: String,
+    val phone: String?,
+    val email: String?,
+    val source: String,
+    val status: String,
+    @SerializedName("contact_method") val contactMethod: String?,
+    @SerializedName("contacted_at") val contactedAt: String?,
+    val address: String?,
+    val city: String?,
+    val province: String?,
+    @SerializedName("property_type") val propertyType: String?,
+    @SerializedName("estimated_value") val estimatedValue: Double?,
+    @SerializedName("timeline_to_sell") val timelineToSell: String?,
     @SerializedName("created_at") val createdAt: String?
+)
+
+data class LeadUpdateRequest(
+    val status: String? = null,
+    @SerializedName("agent_id") val agentId: String? = null,
+    @SerializedName("contact_method") val contactMethod: String? = null
+)
+
+data class TaskAgentRef(val id: String, val name: String)
+
+data class TaskItem(
+    val id: String,
+    @SerializedName("brokerage_id") val brokerageId: String?,
+    @SerializedName("assigned_to") val assignedTo: String?,
+    @SerializedName("created_by") val createdBy: String?,
+    val title: String,
+    val description: String?,
+    val status: String,
+    @SerializedName("due_date") val dueDate: String?,
+    @SerializedName("completed_at") val completedAt: String?,
+    @SerializedName("created_at") val createdAt: String?,
+    val assignee: TaskAgentRef?,
+    val creator: TaskAgentRef?
+)
+
+data class TaskUpdateRequest(
+    val status: String? = null,
+    val title: String? = null,
+    val description: String? = null,
+    @SerializedName("due_date") val dueDate: String? = null,
+    @SerializedName("assigned_to") val assignedTo: String? = null
 )
 
 data class ChatMessage(

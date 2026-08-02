@@ -38,7 +38,16 @@ class LoginActivity : AppCompatActivity() {
             setLoading(true)
             lifecycleScope.launch {
                 auth.signIn(email, password)
-                    .onSuccess { goToMain() }
+                    .onSuccess {
+                        // Every other endpoint (stats, clients, calls, chat) is
+                        // keyed by agents.id, not the Supabase auth uid we just
+                        // got back — resolve and cache it now so fragments don't
+                        // each have to do it themselves.
+                        runCatching { ApiClient.getService(this@LoginActivity).getMyProfile() }
+                            .onSuccess { profile -> auth.saveAgentId(profile.id) }
+                            .onFailure { android.util.Log.e("LoginActivity", "Failed to resolve agents.me after sign-in", it) }
+                        goToMain()
+                    }
                     .onFailure {
                         setLoading(false)
                         Toast.makeText(

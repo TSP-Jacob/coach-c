@@ -33,4 +33,25 @@ interface CoachCApiService {
 
     @DELETE("api/chat/history/{agentId}")
     suspend fun clearChatHistory(@Path("agentId") agentId: String)
+
+    @GET("api/leads/")
+    suspend fun getLeads(): List<Lead>
+
+    @PATCH("api/leads/{leadId}")
+    suspend fun updateLead(@Path("leadId") leadId: String, @Body body: LeadUpdateRequest): Lead
+
+    @GET("api/follow-ups/")
+    suspend fun getFollowUps(): List<Client>
+
+    @PATCH("api/follow-ups/{clientId}")
+    suspend fun setFollowUp(@Path("clientId") clientId: String, @Body body: FollowUpSetRequest): Client
+
+    @DELETE("api/follow-ups/{clientId}")
+    suspend fun completeFollowUp(@Path("clientId") clientId: String)
+
+    @GET("api/tasks/")
+    suspend fun getTasks(): List<TaskItem>
+
+    @PATCH("api/tasks/{taskId}")
+    suspend fun updateTask(@Path("taskId") taskId: String, @Body body: TaskUpdateRequest): TaskItem
 }

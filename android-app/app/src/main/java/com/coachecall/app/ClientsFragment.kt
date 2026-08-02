@@ -29,7 +29,7 @@ class ClientsFragment : Fragment() {
 
     private fun loadClients() {
         val auth = AuthRepository.getInstance(requireContext())
-        val agentId = auth.getUserId() ?: return
+        val agentId = auth.getAgentId() ?: return
         val api = ApiClient.getService(requireContext())
 
         binding.progressBar.visibility = View.VISIBLE

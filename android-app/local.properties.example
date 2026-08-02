@@ -5,4 +5,16 @@ sdk.dir=/path/to/Android/Sdk
 
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=eyJ...
-API_BASE_URL=https://coach-c-theta.vercel.app
+## coach-c-theta.vercel.app is the Next.js frontend, not the API (it 404s on
+## every backend route) — this must be the separate FastAPI/Railway backend.
+API_BASE_URL=https://coach-c-production.up.railway.app
+
+## Release signing (omit these and assembleRelease falls back to the debug
+## key — fine locally, just won't be installable as an update over a real
+## release build). Same physical keystore as chardin_website's android-app,
+## different alias (coachc-dashboard vs coachc-release) since this is a
+## different applicationId.
+RELEASE_KEYSTORE_PATH=/path/to/coachc-release.jks
+RELEASE_KEYSTORE_PASSWORD=...
+RELEASE_KEY_ALIAS=coachc-dashboard
+RELEASE_KEY_PASSWORD=...

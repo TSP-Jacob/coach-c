@@ -39,7 +39,7 @@ class ChatFragment : Fragment() {
 
     private fun loadHistory() {
         val auth = AuthRepository.getInstance(requireContext())
-        val agentId = auth.getUserId() ?: return
+        val agentId = auth.getAgentId() ?: return
         val api = ApiClient.getService(requireContext())
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -58,7 +58,7 @@ class ChatFragment : Fragment() {
         if (text.isEmpty()) return
 
         val auth = AuthRepository.getInstance(requireContext())
-        val agentId = auth.getUserId() ?: return
+        val agentId = auth.getAgentId() ?: return
         val api = ApiClient.getService(requireContext())
 
         binding.etMessage.setText("")

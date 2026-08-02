@@ -32,7 +32,7 @@ class DashboardFragment : Fragment() {
 
     private fun loadData() {
         val auth = AuthRepository.getInstance(requireContext())
-        val agentId = auth.getUserId() ?: return
+        val agentId = auth.getAgentId() ?: return
         val api = ApiClient.getService(requireContext())
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -51,6 +51,7 @@ class DashboardFragment : Fragment() {
                 binding.tvCallBreakdown.text = breakdown.ifEmpty { "No calls yet" }
 
             } catch (e: Exception) {
+                android.util.Log.e("DashboardFragment", "Failed to load dashboard", e)
                 Toast.makeText(context, "Failed to load dashboard", Toast.LENGTH_SHORT).show()
             }
         }

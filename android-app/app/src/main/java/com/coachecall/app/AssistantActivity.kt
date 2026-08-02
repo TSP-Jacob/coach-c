@@ -110,7 +110,7 @@ class AssistantActivity : AppCompatActivity() {
 
     private fun queryAssistant(query: String) {
         val auth = AuthRepository.getInstance(this)
-        val agentId = auth.getUserId() ?: return
+        val agentId = auth.getAgentId() ?: return
         val api = ApiClient.getService(this)
 
         lifecycleScope.launch {
