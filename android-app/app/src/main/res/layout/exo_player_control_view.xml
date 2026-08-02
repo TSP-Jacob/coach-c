@@ -15,7 +15,7 @@
         android:src="@android:drawable/ic_media_play"
         android:background="?attr/selectableItemBackgroundBorderless" />
 
-    <SeekBar
+    <androidx.media3.ui.DefaultTimeBar
         android:id="@id/exo_progress"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
