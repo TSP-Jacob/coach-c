@@ -13,6 +13,12 @@ export default function ScoreBadge({ score, status, size = "sm" }: Props) {
     </span>
   );
 
+  if (status === "missed") return (
+    <span className="text-xs font-semibold px-2.5 py-1 border text-muted bg-cream border-warm-border">
+      Missed
+    </span>
+  );
+
   if (score == null) return <span className="text-xs text-muted">—</span>;
 
   const color = score >= 80

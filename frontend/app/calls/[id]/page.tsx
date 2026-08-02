@@ -186,6 +186,14 @@ export default function CallDetailPage() {
 
       {call.audio_url && <AudioPlayer url={call.audio_url} />}
 
+      {call.status === "missed" && (
+        <div className="border border-warm-border bg-white px-5 py-4 text-sm text-muted">
+          {call.direction === "inbound"
+            ? "This call rang and was never answered — nothing was recorded."
+            : "This call was placed but never picked up — nothing was recorded."}
+        </div>
+      )}
+
       {isProcessing && (
         <div className="border border-warm-border bg-white px-5 py-4 flex items-center gap-3 text-sm text-muted">
           <Loader2 size={14} className="animate-spin text-brand" />

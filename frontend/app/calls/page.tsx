@@ -211,8 +211,10 @@ export default function CallsPage() {
                       </span>
                     ) : null}
                     {call.direction && " · "}
-                    {CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified"} ·{" "}
-                    {call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"} ·{" "}
+                    {call.status === "missed"
+                      ? "Missed"
+                      : `${CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified"} · ${call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"}`
+                    } ·{" "}
                     {new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </Link>
