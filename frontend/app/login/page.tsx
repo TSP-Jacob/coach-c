@@ -152,7 +152,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-muted mt-6">
-          AI Sales Coach for Realtors
+          by Chardin Systems
         </p>
       </div>
     </div>

@@ -107,7 +107,7 @@ export default function Dashboard() {
             </span>
           )}
         </h1>
-        <p className="text-xs text-muted mt-2 tracking-widest uppercase">Coach-C · AI Sales Coach for Realtors</p>
+        <p className="text-xs text-muted mt-2 tracking-widest uppercase">Coach-C · by Chardin Systems</p>
       </div>
 
       {/* Stats grid */}
