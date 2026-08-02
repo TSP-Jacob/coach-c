@@ -151,15 +151,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // session on this origin.
       const ssoToken = sessionStorage.getItem("ext_token");
 
-      // Revoke server-side so the refresh token can't be reused (best effort).
+      // scope=local revokes only THIS session's refresh token — not every
+      // session for the user. Signing out of the browser must never sign
+      // the user out of the Android app (or any other device); each stays
+      // signed in until it's explicitly signed out on that device.
       try {
         if (ssoToken) {
-          await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=global`, {
+          await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`, {
             method: "POST",
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${ssoToken}` },
           });
         } else {
-          await supabase.auth.signOut({ scope: "global" });
+          await supabase.auth.signOut({ scope: "local" });
         }
       } catch { /* best effort — local clear below still runs */ }
 
