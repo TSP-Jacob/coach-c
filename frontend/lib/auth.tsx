@@ -44,13 +44,17 @@ interface AuthCtx {
   features: Features;
   industryMode: IndustryMode;
   loading: boolean;
-  signOut: () => Promise<void>;
+  // Resolves true if it already navigated away (SSO users get redirected to
+  // the portal) — the caller should only navigate itself when this is
+  // false, or the two navigations race and it looks like sign-out silently
+  // failed on the first click.
+  signOut: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthCtx>({
   session: null, agentId: null, role: null, features: FEATURE_DEFAULTS,
   industryMode: DEFAULT_MODE, loading: true,
-  signOut: async () => {},
+  signOut: async () => false,
 });
 
 async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null; features: Features; industryMode: IndustryMode }> {
@@ -137,10 +141,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       session, agentId, role, features, industryMode, loading,
       signOut: async () => {
-      if (typeof window === "undefined") { await supabase.auth.signOut(); return; }
+      if (typeof window === "undefined") { await supabase.auth.signOut(); return false; }
 
-      // SSO users (arrived from the Chardin portal) carry an ext_token but have
-      // no Supabase session on this origin; direct Coach-C users have a session.
+      // Only OLD-style SSO arrivals (no refresh_token, so /auth fell back to
+      // storing a raw bearer token) carry an ext_token — those still have a
+      // separate persistent session on the portal origin that needs its own
+      // sign-out signal. Everyone else (direct logins, and SSO arrivals that
+      // got a real Supabase session via setSession()) just has a normal
+      // session on this origin.
       const ssoToken = sessionStorage.getItem("ext_token");
 
       // Revoke server-side so the refresh token can't be reused (best effort).
@@ -162,11 +170,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAgentId(null);
       setRole(null);
 
-      // The SSO user's persistent session lives on the portal origin, which we
-      // can only clear by handing control back there with a sign-out signal.
+      // The old-style SSO user's persistent session lives on the portal
+      // origin, which we can only clear by handing control back there with
+      // a sign-out signal. window.location.href doesn't block, so the
+      // caller must NOT also navigate itself here — racing a client-side
+      // router.replace against this full-page navigation is exactly what
+      // made "Sign Out" look like it needed a second click to work.
       if (ssoToken) {
         window.location.href = `${PORTAL_URL}/login?signedout=1`;
+        return true;
       }
+      return false;
     },
     }}>
       {children}

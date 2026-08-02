@@ -66,5 +66,6 @@ def impersonate(body: ImpersonateRequest, agent_id: str | None = Depends(get_jwt
 
     return {
         "access_token": redeemed.session.access_token,
+        "refresh_token": redeemed.session.refresh_token,
         "target_email": body.email,
     }

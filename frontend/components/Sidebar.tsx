@@ -62,8 +62,8 @@ export default function Sidebar() {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    await signOut();
-    router.replace("/login");
+    const alreadyNavigated = await signOut();
+    if (!alreadyNavigated) router.replace("/login");
   };
 
   return (
