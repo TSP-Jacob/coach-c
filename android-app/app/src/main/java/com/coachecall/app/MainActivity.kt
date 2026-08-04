@@ -167,4 +167,24 @@ class MainActivity : AppCompatActivity() {
         super.onRestoreInstanceState(savedInstanceState)
         binding.webView.restoreState(savedInstanceState)
     }
+
+    // Required WebView lifecycle pass-through — without this, the WebView's
+    // internal Chromium media pipeline never gets a proper "resumed" signal
+    // from the Activity, which reproducibly breaks getUserMedia() audio
+    // capture (NotReadableError) even on a fresh launch. See
+    // https://developer.android.com/reference/android/webkit/WebView#onResume().
+    override fun onResume() {
+        super.onResume()
+        binding.webView.onResume()
+    }
+
+    override fun onPause() {
+        binding.webView.onPause()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        binding.webView.destroy()
+        super.onDestroy()
+    }
 }
