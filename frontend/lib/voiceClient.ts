@@ -106,12 +106,36 @@ export class VoiceSession {
   async start() {
     if (this.state !== "idle") return;
     this.setState("connecting");
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      // The runtime doesn't expose the API at all — a WebView too old/locked-
+      // down to support it, or an insecure (non-HTTPS) context. Distinct from
+      // "permission denied", so surface it distinctly for diagnosis.
+      this.cb.onError?.("This app can't access the microphone here (unsupported browser/WebView). [no-mediaDevices]");
+      this.setState("error");
+      return;
+    }
+
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-    } catch {
-      this.cb.onError?.("Microphone access was blocked. Enable it to talk to the assistant.");
+    } catch (err) {
+      // Surface the ACTUAL browser error (name + message), not a guess — this
+      // is what tells us permission-denied vs. mic-busy vs. no-device vs.
+      // something WebView-specific, instead of a generic dead end.
+      const name = (err as any)?.name ?? "UnknownError";
+      const detail = (err as any)?.message ?? String(err);
+      const known: Record<string, string> = {
+        NotAllowedError: "Microphone access was blocked. Enable it in your device's app settings.",
+        PermissionDeniedError: "Microphone access was blocked. Enable it in your device's app settings.",
+        NotFoundError: "No microphone was found on this device.",
+        NotReadableError: "The microphone is busy or unavailable right now — another app may be using it.",
+        SecurityError: "Microphone access isn't allowed in this context.",
+        AbortError: "Starting the microphone was interrupted.",
+      };
+      const friendly = known[name] ?? "Couldn't access the microphone.";
+      this.cb.onError?.(`${friendly} [${name}: ${detail}]`);
       this.setState("error");
       return;
     }
