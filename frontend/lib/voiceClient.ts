@@ -103,6 +103,27 @@ export class VoiceSession {
     for (const e of this.transcript) delete (e as any)._open;
   }
 
+  /** Acquire the mic, retrying briefly on NotReadableError/AbortError — these
+   *  mean the hardware wasn't ready yet (commonly a previous session's audio
+   *  device release still finishing, seen on some Android WebViews), and
+   *  almost always succeed on retry a moment later. Permission/hardware-
+   *  absent errors (NotAllowedError, NotFoundError, SecurityError, ...) are
+   *  NOT retried — retrying those is pointless and just adds delay. */
+  private async acquireMic(): Promise<MediaStream> {
+    const constraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+    const delaysMs = [350, 900]; // 3 attempts total
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        const name = (err as any)?.name;
+        const transient = name === "NotReadableError" || name === "AbortError";
+        if (!transient || attempt >= delaysMs.length) throw err;
+        await new Promise(r => setTimeout(r, delaysMs[attempt]));
+      }
+    }
+  }
+
   async start() {
     if (this.state !== "idle") return;
     this.setState("connecting");
@@ -117,9 +138,7 @@ export class VoiceSession {
     }
 
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      this.stream = await this.acquireMic();
     } catch (err) {
       // Surface the ACTUAL browser error (name + message), not a guess — this
       // is what tells us permission-denied vs. mic-busy vs. no-device vs.
