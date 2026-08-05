@@ -11,6 +11,15 @@
 
 const INPUT_RATE = 16000;
 const OUTPUT_RATE = 24000;
+// Raw mic RMS level (0..1, before the *4 UI-meter scaling) above which a frame
+// counts as real speech rather than silence/room noise. Below this, a turn is
+// never opened with the server at all — prevents sending near-silent audio
+// that speech-to-text models can "hallucinate" text from.
+const SPEECH_LEVEL_THRESHOLD = 0.02;
+// Cap on how much pre-speech audio we buffer locally while waiting for the
+// level to cross the threshold, so a long pause before speaking doesn't grow
+// unbounded — same idea as the old VAD's prefix_padding.
+const MAX_PREROLL_SAMPLES = INPUT_RATE * 1; // ~1s
 
 export type VoiceState = "idle" | "connecting" | "ready" | "listening" | "thinking" | "speaking" | "error" | "closed";
 
@@ -66,6 +75,8 @@ export class VoiceSession {
   private ready = false;   // connection ready (server sent "ready", auth accepted)
   private talking = false; // push-to-talk: true while the user's turn is active
   private autoStartFirstTurn = true; // open the mic automatically for the first turn
+  private turnHadSpeech = false;    // has this turn crossed the speech-level threshold yet?
+  private turnOpenedWithServer = false; // did we actually tell Gemini a turn started?
   private closed = false;
   private levelThrottle = 0;
 
@@ -202,6 +213,29 @@ export class VoiceSession {
     }
     // Push-to-talk: only stream mic audio while the user's turn is active.
     if (!this.talking || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    if (data.level > SPEECH_LEVEL_THRESHOLD) this.turnHadSpeech = true;
+
+    if (!this.turnHadSpeech) {
+      // Nothing but silence/noise so far this turn — buffer locally as a
+      // bounded pre-roll instead of sending. No activity_start goes to the
+      // server until we're confident this is real speech, so a turn that
+      // never has speech in it is never opened with Gemini at all.
+      this.pending.push(new Int16Array(data.pcm));
+      this.pendingLen += data.pcm.byteLength / 2;
+      while (this.pendingLen > MAX_PREROLL_SAMPLES && this.pending.length > 1) {
+        this.pendingLen -= this.pending.shift()!.length;
+      }
+      return;
+    }
+
+    if (!this.turnOpenedWithServer) {
+      // First frame that's actually speech — open the turn now and flush the
+      // buffered pre-roll so the start of the word isn't clipped.
+      this.turnOpenedWithServer = true;
+      try { this.ws.send(JSON.stringify({ type: "activity_start" })); } catch {}
+    }
+
     this.pending.push(new Int16Array(data.pcm));
     this.pendingLen += data.pcm.byteLength / 2;
     // Flush ~50 ms of audio at a time — small enough to keep input latency low,
@@ -323,21 +357,37 @@ export class VoiceSession {
   setMuted(m: boolean) { this.muted = m; }
   isTalking() { return this.talking; }
 
-  /** Push-to-talk: begin the user's turn. Streams mic audio until endTurn(). */
+  /** Push-to-talk: begin the user's turn. Streams mic audio until endTurn().
+   *  The turn isn't actually opened with the server until real speech is
+   *  detected (see onMicFrame) — so tapping the mic and not speaking never
+   *  reaches Gemini at all. */
   async startTurn() {
     if (!this.ready || this.closed || this.talking) return;
     await this.resume();
     this.stopPlayback();           // barge-in: cut any assistant playback
     this.pending = []; this.pendingLen = 0;
+    this.turnHadSpeech = false;
+    this.turnOpenedWithServer = false;
     this.talking = true;
-    try { this.ws?.send(JSON.stringify({ type: "activity_start" })); } catch {}
     this.setState("listening");
   }
 
-  /** Push-to-talk: end the user's turn — flush audio, signal end, await reply. */
+  /** Push-to-talk: end the user's turn. If no speech was ever detected, this
+   *  is a silent no-op (nothing was ever sent to the server, so there's
+   *  nothing to finalize) — otherwise flush audio, signal end, await reply. */
   endTurn() {
     if (!this.talking) return;
     this.talking = false;
+
+    if (!this.turnOpenedWithServer) {
+      // Tapped stop without ever speaking — discard locally, no server round
+      // trip, and importantly no risk of the model hallucinating a reply
+      // from silence/noise.
+      this.pending = []; this.pendingLen = 0;
+      this.setState("ready");
+      return;
+    }
+
     // Flush any buffered mic audio so the tail of the turn isn't dropped.
     if (this.pendingLen && this.ws?.readyState === WebSocket.OPEN) {
       const merged = new Int16Array(this.pendingLen);
