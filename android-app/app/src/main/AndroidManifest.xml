@@ -6,6 +6,15 @@
          getUserMedia call, notes dictation) — the WebView forwards its own
          permission prompt to this app's runtime permission. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Chromium's audio engine requires this (alongside RECORD_AUDIO) to
+         select an input device at all — without it, getUserMedia() fails with
+         NotReadableError even though the mic permission itself is granted.
+         Confirmed via logcat: "media/audio/android/audio_manager_android.cc:883
+         Unable to select communication device!" / "Requires
+         MODIFY_AUDIO_SETTINGS and RECORD_AUDIO." This is a normal (non-
+         dangerous) permission — granted automatically at install, no runtime
+         prompt needed. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <application
         android:allowBackup="false"
