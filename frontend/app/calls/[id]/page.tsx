@@ -222,6 +222,13 @@ export default function CallDetailPage() {
         </div>
       )}
 
+      {call.status === "complete" && call.coaching_report?.summary && (
+        <div className="bg-white border border-warm-border px-5 py-4">
+          <p className="text-[10px] tracking-widest uppercase text-muted mb-2">{t("Call Summary")}</p>
+          <p className="text-sm text-charcoal leading-relaxed">{call.coaching_report.summary}</p>
+        </div>
+      )}
+
       {call.status === "complete" && (
         features.call_coaching ? (
           <>

@@ -39,14 +39,14 @@ function formatDuration(secs?: number) {
   return m > 0 ? `${m}m${s > 0 ? ` ${s}s` : ""}` : `${s}s`;
 }
 
-function relativeDateLabel(iso: string): string {
+function relativeDateLabel(iso: string, language: string, t: (s: string) => string): string {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days <= 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days}d ago`;
+  if (days <= 0) return t("Today");
+  if (days === 1) return t("Yesterday");
+  if (days < 7) return language === "fr" ? `il y a ${days} j` : `${days}d ago`;
   const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (weeks < 5) return language === "fr" ? `il y a ${weeks} sem.` : `${weeks}w ago`;
+  return new Date(iso).toLocaleDateString(language === "fr" ? "fr-CA" : "en-US", { month: "short", day: "numeric" });
 }
 
 interface LatestActivity {
@@ -62,7 +62,7 @@ interface ClientRow extends Client {
 }
 
 export default function ClientsPage() {
-  const { agentId: AGENT_ID, industryMode } = useAuth();
+  const { agentId: AGENT_ID, industryMode, language, t } = useAuth();
   const searchParams = useSearchParams();
   // SWR-cached: instant on revisit; "calls" cache is shared with the dashboard.
   const { data: clients = [], mutate: mutateClients } =
@@ -182,16 +182,18 @@ export default function ClientsPage() {
     <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div className="border-b border-warm-border pb-5">
-        <h1 className="text-4xl font-serif font-bold text-charcoal">Clients</h1>
+        <h1 className="text-4xl font-serif font-bold text-charcoal">{t("Clients")}</h1>
         <p className="text-xs text-muted mt-1 tracking-widest uppercase">
-          {clients.length} profile{clients.length !== 1 ? "s" : ""}
+          {language === "fr"
+            ? `${clients.length} profil${clients.length !== 1 ? "s" : ""}`
+            : `${clients.length} profile${clients.length !== 1 ? "s" : ""}`}
         </p>
       </div>
 
       {/* Recently Added — pinned strip of the 5 newest clients */}
       {recentRows.length > 0 && (
         <div className="space-y-2.5">
-          <p className="text-[10px] tracking-widest uppercase text-muted">Recently Added</p>
+          <p className="text-[10px] tracking-widest uppercase text-muted">{t("Recently Added")}</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             {recentRows.map(r => (
               <button
@@ -204,12 +206,12 @@ export default function ClientsPage() {
                     {r.name}
                   </p>
                   <span className="text-[9px] tracking-wide uppercase px-1.5 py-0.5 border border-brand/30 bg-brand-light text-brand shrink-0">
-                    New
+                    {t("New")}
                   </span>
                 </div>
                 <p className="text-xs text-muted mt-1 truncate">{clientTypeLabel(industryMode, r.type)}</p>
                 {r.created_at && (
-                  <p className="text-[10px] text-muted mt-2">{relativeDateLabel(r.created_at)}</p>
+                  <p className="text-[10px] text-muted mt-2">{relativeDateLabel(r.created_at, language, t)}</p>
                 )}
               </button>
             ))}
@@ -222,7 +224,7 @@ export default function ClientsPage() {
         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
         <input
           value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, phone, or email…"
+          placeholder={t("Search by name, phone, or email…")}
           className="w-full pl-9 pr-4 py-2.5 text-sm border border-warm-border bg-white focus:outline-none focus:border-brand transition-colors"
         />
       </div>
@@ -230,7 +232,7 @@ export default function ClientsPage() {
       {/* Table */}
       <div className="bg-white border border-warm-border">
         <div className="hidden md:grid md:grid-cols-[2.5fr_1fr_1.5fr_1fr_0.5fr] gap-4 px-6 py-3 border-b border-warm-border">
-          {["Client", "Status", "Contact", "Calls · Score", ""].map((h, i) => (
+          {[t("Client"), t("Status"), t("Contact"), t("Calls · Score"), ""].map((h, i) => (
             <p key={i} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
           ))}
         </div>
@@ -239,8 +241,8 @@ export default function ClientsPage() {
           {filtered.length === 0 && (
             <p className="text-muted text-sm px-6 py-8 italic font-serif">
               {clients.length === 0
-                ? "No clients yet. Clients are created automatically when calls are analyzed."
-                : "No clients match your search."}
+                ? t("No clients yet. Clients are created automatically when calls are analyzed.")
+                : t("No clients match your search.")}
             </p>
           )}
 
@@ -265,14 +267,14 @@ export default function ClientsPage() {
                       <p className="text-xs text-muted mt-1 leading-relaxed line-clamp-1">{latestActivity.text}</p>
                     )}
                     {!latestActivity && row.clientCalls.length === 0 && (
-                      <p className="text-xs text-muted mt-1 italic">No activity yet</p>
+                      <p className="text-xs text-muted mt-1 italic">{t("No activity yet")}</p>
                     )}
                   </div>
 
                   {/* Client status badge */}
                   <div>
                     <span className={`text-xs px-2 py-0.5 border whitespace-nowrap ${statusStyle}`}>
-                      {statusLabel}
+                      {t(statusLabel)}
                     </span>
                     <p className="text-xs text-muted mt-1.5">{clientTypeLabel(industryMode, row.type)}</p>
                   </div>
@@ -297,12 +299,12 @@ export default function ClientsPage() {
                     <p className="text-sm font-serif font-bold text-charcoal">
                       {row.clientCalls.length}
                       <span className="text-xs font-sans font-normal text-muted ml-1">
-                        call{row.clientCalls.length !== 1 ? "s" : ""}
+                        {language === "fr" ? "appel" + (row.clientCalls.length !== 1 ? "s" : "") : `call${row.clientCalls.length !== 1 ? "s" : ""}`}
                       </span>
                     </p>
                     {row.avgScore != null && (
                       <p className="text-xs text-muted mt-0.5">
-                        avg <span className="font-mono text-charcoal">{row.avgScore}</span>
+                        {t("avg")} <span className="font-mono text-charcoal">{row.avgScore}</span>
                       </p>
                     )}
                   </div>
@@ -326,7 +328,7 @@ export default function ClientsPage() {
                       {/* Agent + client status */}
                       <div className="space-y-4">
                         <div>
-                          <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Assigned Agent</p>
+                          <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">{t("Assigned Agent")}</p>
                           {assignedAgent ? (
                             <Link
                               href={`/agents/${assignedAgent.id}`}
@@ -336,18 +338,18 @@ export default function ClientsPage() {
                               {assignedAgent.name} →
                             </Link>
                           ) : (
-                            <p className="text-sm text-muted italic">Unassigned</p>
+                            <p className="text-sm text-muted italic">{t("Unassigned")}</p>
                           )}
                         </div>
                         <div onClick={e => e.stopPropagation()}>
-                          <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Client Status</p>
+                          <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">{t("Client Status")}</p>
                           <select
                             value={row.client_status || "Lead"}
                             onChange={e => handleStatusChange(row.id, e.target.value)}
                             className="text-sm border border-warm-border bg-white px-2 py-1.5 focus:outline-none focus:border-brand transition-colors w-full"
                           >
                             {CLIENT_STATUSES.map(s => (
-                              <option key={s} value={s}>{s}</option>
+                              <option key={s} value={s}>{t(s)}</option>
                             ))}
                           </select>
                         </div>
@@ -355,7 +357,7 @@ export default function ClientsPage() {
 
                       {/* Contact info */}
                       <div className="space-y-3">
-                        <p className="text-[10px] tracking-widest uppercase text-muted">Contact Info</p>
+                        <p className="text-[10px] tracking-widest uppercase text-muted">{t("Contact Info")}</p>
                         {row.phone && (
                           <p className="text-sm text-charcoal flex items-center gap-2">
                             <Phone size={13} className="text-muted shrink-0" /> {row.phone}
@@ -375,24 +377,24 @@ export default function ClientsPage() {
                       {/* Latest summary */}
                       <div>
                         <div className="flex items-center gap-2 mb-1.5">
-                          <p className="text-[10px] tracking-widest uppercase text-muted">Latest Summary</p>
+                          <p className="text-[10px] tracking-widest uppercase text-muted">{t("Latest Summary")}</p>
                           {latestActivity && (
                             <span className="text-[9px] tracking-wide uppercase px-1.5 py-0.5 border border-warm-border bg-white text-muted">
-                              {latestActivity.kind === "note" ? "Note" : "Call"}
+                              {latestActivity.kind === "note" ? t("Note") : t("Call")}
                             </span>
                           )}
                         </div>
                         {latestActivity ? (
                           <p className="text-sm text-charcoal leading-relaxed">{latestActivity.text}</p>
                         ) : (
-                          <p className="text-sm text-muted italic">No activity yet.</p>
+                          <p className="text-sm text-muted italic">{t("No activity yet.")}</p>
                         )}
                       </div>
                     </div>
 
                     {/* Follow-up */}
                     <div>
-                      <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">Follow-Up</p>
+                      <p className="text-[10px] tracking-widest uppercase text-muted mb-1.5">{t("Follow-Up")}</p>
                       <FollowUpField
                         client={row}
                         onSet={date => handleFollowUpSet(row.id, date)}
@@ -403,7 +405,7 @@ export default function ClientsPage() {
                     {/* Consent badges */}
                     {(consentsMap[row.id]?.length ?? 0) > 0 && (
                       <div>
-                        <p className="text-[10px] tracking-widest uppercase text-muted mb-3">Consent</p>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-3">{t("Consent")}</p>
                         <div className="flex flex-wrap gap-2">
                           {consentsMap[row.id].map(c => (
                             <ConsentBadge key={c.id} consent={c} />
@@ -414,9 +416,9 @@ export default function ClientsPage() {
 
                     {/* Communications list */}
                     <div>
-                      <p className="text-[10px] tracking-widest uppercase text-muted mb-3">Communications</p>
+                      <p className="text-[10px] tracking-widest uppercase text-muted mb-3">{t("Communications")}</p>
                       {row.clientCalls.length === 0 ? (
-                        <p className="text-sm text-muted italic">No recorded calls yet.</p>
+                        <p className="text-sm text-muted italic">{t("No recorded calls yet.")}</p>
                       ) : (
                         <div className="space-y-2">
                           {row.clientCalls.map(call => (
@@ -430,12 +432,13 @@ export default function ClientsPage() {
                                 <PhoneCall size={13} className="text-muted shrink-0" />
                                 <div>
                                   <p className="text-sm font-medium text-charcoal group-hover:text-brand transition-colors">
-                                    {callTypeLabel(industryMode, call.call_type ?? undefined)}
+                                    {t(callTypeLabel(industryMode, call.call_type ?? undefined))}
                                   </p>
                                   <p className="text-xs text-muted mt-0.5">
-                                    {call.call_date
-                                      ? new Date(call.call_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                                      : new Date(call.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                                    {(call.call_date
+                                      ? new Date(call.call_date)
+                                      : new Date(call.created_at)
+                                    ).toLocaleDateString(language === "fr" ? "fr-CA" : "en-US", { month: "short", day: "numeric", year: "numeric" })
                                     }
                                     {call.duration_seconds ? ` · ${formatDuration(call.duration_seconds)}` : ""}
                                   </p>
@@ -468,8 +471,9 @@ export default function ClientsPage() {
 
 /* Consent badge with hover tooltip */
 function ConsentBadge({ consent }: { consent: Consent }) {
+  const { language, t } = useAuth();
   const [hovered, setHovered] = useState(false);
-  const ts = new Date(consent.created_at).toLocaleString("en-CA", {
+  const ts = new Date(consent.created_at).toLocaleString(language === "fr" ? "fr-CA" : "en-CA", {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
@@ -479,39 +483,39 @@ function ConsentBadge({ consent }: { consent: Consent }) {
       {/* Badge chip */}
       <div className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-200 cursor-default select-none">
         <ShieldCheck size={12} className="text-green-600 shrink-0" />
-        <span className="text-xs text-green-700 font-medium">Consent</span>
+        <span className="text-xs text-green-700 font-medium">{t("Consent")}</span>
         <span className="text-[10px] text-green-500 ml-1">{ts}</span>
       </div>
 
       {/* Hover tooltip */}
       {hovered && (
         <div className="absolute bottom-full left-0 mb-2 z-50 w-96 bg-white border border-warm-border shadow-lg p-4 space-y-3">
-          <p className="text-[10px] tracking-widest uppercase text-muted">Consent Record</p>
+          <p className="text-[10px] tracking-widest uppercase text-muted">{t("Consent Record")}</p>
 
           <div className="space-y-1">
-            <p className="text-xs text-muted">Recorded: <span className="text-charcoal">{ts}</span></p>
+            <p className="text-xs text-muted">{t("Recorded:")} <span className="text-charcoal">{ts}</span></p>
             {consent.sent_to_email && (
               <p className="text-xs text-muted flex items-center gap-1">
                 <Mail size={10} />
-                Log sent to: <span className="text-charcoal ml-1">{consent.sent_to_email}</span>
+                {t("Log sent to:")} <span className="text-charcoal ml-1">{consent.sent_to_email}</span>
               </p>
             )}
             {consent.owner_email && (
               <p className="text-xs text-muted flex items-center gap-1">
                 <Mail size={10} />
-                Homeowner email: <span className="text-charcoal ml-1">{consent.owner_email}</span>
+                {t("Homeowner email:")} <span className="text-charcoal ml-1">{consent.owner_email}</span>
               </p>
             )}
             {consent.owner_phone && (
               <p className="text-xs text-muted flex items-center gap-1">
                 <Phone size={10} />
-                Homeowner phone: <span className="text-charcoal ml-1">{consent.owner_phone}</span>
+                {t("Homeowner phone:")} <span className="text-charcoal ml-1">{consent.owner_phone}</span>
               </p>
             )}
           </div>
 
           <div>
-            <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Consent text shown to homeowner</p>
+            <p className="text-[10px] tracking-widest uppercase text-muted mb-1">{t("Consent text shown to homeowner")}</p>
             <p className="text-xs text-charcoal leading-relaxed bg-cream border border-warm-border p-2.5 whitespace-pre-wrap">
               {consent.consent_text}
             </p>
@@ -524,6 +528,7 @@ function ConsentBadge({ consent }: { consent: Consent }) {
 
 /* Inline editable location field */
 function LocationField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const { t } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(value);
 
@@ -543,7 +548,7 @@ function LocationField({ value, onSave }: { value: string; onSave: (v: string) =
           onBlur={commit}
           onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setDraft(value); setEditing(false); } }}
           className="text-sm border border-brand px-2 py-0.5 focus:outline-none flex-1"
-          placeholder="Add address…"
+          placeholder={t("Add address…")}
         />
       </div>
     );
@@ -557,7 +562,7 @@ function LocationField({ value, onSave }: { value: string; onSave: (v: string) =
       <MapPin size={13} className="text-muted shrink-0" />
       {value
         ? <span className="text-charcoal group-hover:text-brand transition-colors">{value}</span>
-        : <span className="text-muted italic group-hover:text-brand transition-colors">Add address…</span>
+        : <span className="text-muted italic group-hover:text-brand transition-colors">{t("Add address…")}</span>
       }
     </button>
   );
@@ -567,6 +572,7 @@ function LocationField({ value, onSave }: { value: string; onSave: (v: string) =
 function FollowUpField({ client, onSet, onComplete }: {
   client: Client; onSet: (date: string) => void; onComplete: () => void;
 }) {
+  const { language, t } = useAuth();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(client.follow_up_date ?? "");
 
@@ -596,7 +602,7 @@ function FollowUpField({ client, onSet, onComplete }: {
   }
 
   if (client.follow_up_date) {
-    const label = new Date(`${client.follow_up_date}T00:00:00`).toLocaleDateString("en-US", {
+    const label = new Date(`${client.follow_up_date}T00:00:00`).toLocaleDateString(language === "fr" ? "fr-CA" : "en-US", {
       month: "short", day: "numeric", year: "numeric",
     });
     return (
@@ -611,7 +617,7 @@ function FollowUpField({ client, onSet, onComplete }: {
           onClick={onComplete}
           className="text-[10px] text-green-700 border border-green-200 px-2 py-0.5 hover:bg-green-50 transition-colors"
         >
-          Mark Complete
+          {t("Mark Complete")}
         </button>
       </div>
     );
@@ -623,7 +629,7 @@ function FollowUpField({ client, onSet, onComplete }: {
       className="flex items-center gap-2 text-sm text-left group"
     >
       <CalendarClock size={13} className="text-muted shrink-0" />
-      <span className="text-muted italic group-hover:text-brand transition-colors">Create Follow-Up…</span>
+      <span className="text-muted italic group-hover:text-brand transition-colors">{t("Create Follow-Up…")}</span>
     </button>
   );
 }

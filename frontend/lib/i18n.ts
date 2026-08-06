@@ -206,6 +206,38 @@ const FR: Record<string, string> = {
   "total": "total",
   "overdue": "en retard",
   "from": "de",
+
+  // Clients page
+  "Recently Added": "Ajoutés récemment",
+  "Search by name, phone, or email…": "Rechercher par nom, téléphone ou courriel…",
+  "Client": "Client",
+  "Calls · Score": "Appels · Score",
+  "No clients yet. Clients are created automatically when calls are analyzed.":
+    "Aucun client pour le moment. Les clients sont créés automatiquement lors de l'analyse des appels.",
+  "No clients match your search.": "Aucun client ne correspond à votre recherche.",
+  "No activity yet": "Aucune activité pour le moment",
+  "avg": "moy.",
+  "Client Status": "Statut du client",
+  "Contact Info": "Coordonnées",
+  "Latest Summary": "Dernier résumé",
+  "Note": "Note",
+  "No activity yet.": "Aucune activité pour le moment.",
+  "Consent": "Consentement",
+  "Communications": "Communications",
+  "No recorded calls yet.": "Aucun appel enregistré pour le moment.",
+  "Add address…": "Ajouter une adresse…",
+  "Create Follow-Up…": "Créer un suivi…",
+  "Consent Record": "Registre de consentement",
+  "Recorded:": "Enregistré le :",
+  "Log sent to:": "Journal envoyé à :",
+  "Homeowner email:": "Courriel du propriétaire :",
+  "Homeowner phone:": "Téléphone du propriétaire :",
+  "Consent text shown to homeowner": "Texte de consentement présenté au propriétaire",
+  "Today": "Aujourd'hui",
+  "Yesterday": "Hier",
+
+  // Call detail — summary card
+  "Call Summary": "Résumé de l'appel",
 };
 
 export function translate(language: Language, text: string): string {
