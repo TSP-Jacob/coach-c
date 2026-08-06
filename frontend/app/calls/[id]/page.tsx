@@ -54,14 +54,18 @@ export default function CallDetailPage() {
   const [client,  setClient]  = useState<Client | null>(null);
   const [agents,  setAgents]  = useState<Agent[]>([]);
   const [tab,     setTab]     = useState<"report" | "transcript">("report");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    api.calls.get(id).then(c => {
-      setCall(c);
-      if (c.client_id) api.agents.getClient(c.client_id).then(setClient);
-    });
-    api.agents.list().then(setAgents);
+    setLoadError(null);
+    api.calls.get(id)
+      .then(c => {
+        setCall(c);
+        if (c.client_id) api.agents.getClient(c.client_id).then(setClient).catch(() => {});
+      })
+      .catch(err => setLoadError(err instanceof Error ? err.message : "Failed to load this call."));
+    api.agents.list().then(setAgents).catch(() => {});
 
     const channel = supabase
       .channel(`call-${id}`)
@@ -91,6 +95,13 @@ export default function CallDetailPage() {
     await api.agents.updateClient(client.id, { agent_id: agentId });
     toast("Agent assigned");
   }
+
+  if (loadError) return (
+    <div className="border-l-4 border-brand bg-brand/5 px-5 py-4 text-sm text-brand max-w-lg">
+      <p className="font-semibold mb-1">Couldn&apos;t load this call</p>
+      <p className="text-brand/70">{loadError}</p>
+    </div>
+  );
 
   if (!call) return (
     <div className="flex items-center gap-2 text-muted p-8">

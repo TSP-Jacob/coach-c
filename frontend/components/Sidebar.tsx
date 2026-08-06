@@ -5,6 +5,7 @@ import { useState } from "react";
 import { LayoutDashboard, Phone, MessageSquare, Users, BookOpen, Menu, X, Contact, LogOut, UserPlus, NotebookPen, Building2, CreditCard, ShieldCheck, PhoneCall, CalendarClock, ListChecks, Smartphone } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/lib/auth";
+import { SECTION_LABELS } from "@/lib/industry";
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
@@ -33,25 +34,31 @@ const nav: NavItem[] = [
 
 function NavLinks({ onNav }: { onNav?: () => void }) {
   const path = usePathname();
-  const { role, features } = useAuth();
+  const { role, features, industryMode } = useAuth();
+  const sectionLabels = SECTION_LABELS[industryMode];
   const visible = nav.filter(item =>
     (!item.roles || (role != null && item.roles.includes(role))) &&
     (!item.feature || features[item.feature] !== false)
   );
   return (
     <nav className="flex-1 px-4 py-6 space-y-0.5">
-      {visible.map(({ href, label, icon: Icon }) => (
-        <Link key={href} href={href} onClick={onNav}
-          className={clsx(
-            "flex items-center gap-3 px-3 py-2.5 text-sm transition-colors rounded",
-            path === href
-              ? "text-brand font-semibold"
-              : "text-muted hover:text-charcoal"
-          )}>
-          <Icon size={15} strokeWidth={1.5} />
-          {label}
-        </Link>
-      ))}
+      {visible.map(({ href, label, icon: Icon }) => {
+        const displayLabel = href === "/leads" ? sectionLabels.leads
+          : href === "/agents" ? sectionLabels.agents
+          : label;
+        return (
+          <Link key={href} href={href} onClick={onNav}
+            className={clsx(
+              "flex items-center gap-3 px-3 py-2.5 text-sm transition-colors rounded",
+              path === href
+                ? "text-brand font-semibold"
+                : "text-muted hover:text-charcoal"
+            )}>
+            <Icon size={15} strokeWidth={1.5} />
+            {displayLabel}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

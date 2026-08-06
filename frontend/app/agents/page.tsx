@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { TrendingUp, Phone } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { SECTION_LABELS } from "@/lib/industry";
 
 const roleBadge: Record<string, string> = {
   admin:    "bg-brand/10 text-brand",
@@ -12,7 +13,8 @@ const roleBadge: Record<string, string> = {
 };
 
 export default function AgentsPage() {
-  const { agentId, features, loading: authLoading } = useAuth();
+  const { agentId, features, industryMode, loading: authLoading } = useAuth();
+  const labels = SECTION_LABELS[industryMode];
   const coaching = features.call_coaching;
   // SWR-cached; the global config revalidates on focus/navigation, which is
   // plenty fresh for a rarely-changing team roster.
@@ -29,7 +31,7 @@ export default function AgentsPage() {
   return (
     <div className="max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Agents</h1>
+        <h1 className="text-2xl font-bold">{labels.agents}</h1>
         <p className="text-sm text-gray-400 mt-1">Performance overview for your team</p>
       </div>
 
@@ -45,7 +47,7 @@ export default function AgentsPage() {
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
         {loading && <p className="text-sm text-gray-400 p-6">Loading…</p>}
         {!loading && team.length === 0 && (
-          <p className="text-sm text-gray-400 p-6">No agents found.</p>
+          <p className="text-sm text-gray-400 p-6">{labels.agentsEmpty}</p>
         )}
         {team.map(m => (
           <Link key={m.id} href={`/agents/${m.id}`}

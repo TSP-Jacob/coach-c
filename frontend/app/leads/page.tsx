@@ -4,6 +4,7 @@ import useSWR from "swr";
 import { api, Lead } from "@/lib/api";
 import { Phone, Mail, PhoneCall, MessageSquare, AtSign, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { SECTION_LABELS } from "@/lib/industry";
 
 const CONTACT_METHODS = [
   { value: "call",      label: "Phone Call",   icon: PhoneCall },
@@ -21,6 +22,13 @@ function SourceBadge({ source }: { source: Lead["source"] }) {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 whitespace-nowrap">
         Call
+      </span>
+    );
+  }
+  if (source === "assistant") {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 whitespace-nowrap">
+        Assistant
       </span>
     );
   }
@@ -100,7 +108,8 @@ function RespondPopover({ onSelect }: { onSelect: (method: string) => void }) {
 }
 
 export default function LeadsPage() {
-  const { agentId, role } = useAuth();
+  const { agentId, role, industryMode } = useAuth();
+  const labels = SECTION_LABELS[industryMode];
   const canManage = role === "admin" || role === "manager";
   const [sourceFilter, setSourceFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -156,7 +165,7 @@ export default function LeadsPage() {
     <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div className="border-b border-warm-border pb-5">
-        <h1 className="text-4xl font-serif font-bold text-charcoal">Leads</h1>
+        <h1 className="text-4xl font-serif font-bold text-charcoal">{labels.leads}</h1>
         <p className="text-xs text-muted mt-1 tracking-widest uppercase">
           {leads.length} total · {newCount} awaiting response
         </p>
@@ -212,7 +221,7 @@ export default function LeadsPage() {
         <div className="divide-y divide-warm-border">
           {leads.length === 0 && (
             <p className="text-muted text-sm px-6 py-8 italic font-serif">
-              No leads yet. Leads are created automatically from new callers and Home Value submissions.
+              {labels.leadsEmpty}
             </p>
           )}
 
@@ -232,6 +241,14 @@ export default function LeadsPage() {
                     <p className="text-xs text-muted mt-0.5">
                       {new Date(lead.created_at).toLocaleDateString()}
                     </p>
+                    {lead.job_description && (
+                      <p className="text-xs text-muted mt-1 italic">{lead.job_description}</p>
+                    )}
+                    {lead.job_date && (
+                      <p className="text-[10px] text-brand mt-1 tracking-wide">
+                        Wanted {new Date(lead.job_date + "T00:00:00").toLocaleDateString()}
+                      </p>
+                    )}
                     {hasPropertyDetail && (
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : lead.id)}

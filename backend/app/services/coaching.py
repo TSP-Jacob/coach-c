@@ -38,6 +38,51 @@ class CoachingService:
         )
         return message.content[0].text.strip().lower()
 
+    def detect_job_request(self, utterances: list[dict], today_hint: str | None = None) -> dict:
+        """Decide whether the caller is asking to have work/a job done (a
+        repair, installation, estimate, maintenance visit, etc.) — as opposed
+        to a call with no actionable work request (billing question, wrong
+        number, confirming an existing appointment with nothing new, etc.) —
+        and pull out any date they gave for it."""
+        today = today_hint or date.today().isoformat()
+        sample = "\n".join(f"{u['speaker']}: {u['text']}" for u in utterances[:60])
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=200,
+            system=(
+                "You read a service-business phone call transcript and decide "
+                "whether the caller is requesting work to be done. Reply with "
+                "ONLY valid JSON — no prose, no code fences."
+            ),
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Today's date is {today}.\n\n"
+                    f"TRANSCRIPT:\n{sample}\n\n"
+                    "Return JSON:\n"
+                    '{"needs_job": true or false, '
+                    '"description": "<one short phrase summarizing the work '
+                    'requested, or null>", '
+                    '"requested_date": "<ISO YYYY-MM-DD if the caller gave a '
+                    "specific date or day (resolve relative phrases like 'next "
+                    "Tuesday' using today's date above), else null>\"}"
+                ),
+            }],
+        )
+        raw = _text_of(message)
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        import re as _re
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if m:
+            raw = m.group()
+        try:
+            return json.loads(raw.strip())
+        except Exception:
+            return {"needs_job": False, "description": None, "requested_date": None}
+
     def identify_realtor_speaker(self, utterances: list[dict]) -> str:
         """Returns 'A' or 'B' — whichever speaker is the realtor."""
         sample = "\n".join(

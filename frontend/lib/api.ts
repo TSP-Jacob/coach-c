@@ -439,10 +439,11 @@ export interface Task {
 export interface Lead {
   id: string;
   agent_id: string | null;
+  client_id?: string | null;
   name: string;
   phone?: string;
   email?: string;
-  source: "call" | "home_value";
+  source: "call" | "home_value" | "assistant";
   status: "new" | "contacted" | "converted" | "lost";
   contact_method?: "call" | "text" | "email" | "in_person";
   contacted_at?: string;
@@ -452,6 +453,8 @@ export interface Lead {
   property_type?: string;
   estimated_value?: number;
   timeline_to_sell?: string;
+  job_date?: string;
+  job_description?: string;
   call_id?: string;
   created_at: string;
 }

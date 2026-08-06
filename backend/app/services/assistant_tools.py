@@ -209,6 +209,47 @@ TOOL_DECLARATIONS: list[dict] = [
         },
     },
     {
+        "name": "create_job",
+        "description": (
+            "Log a new job that needs to be done for a client — a repair, "
+            "installation, estimate, or service visit that hasn't happened yet. "
+            "This puts it in the Leads/New Jobs section, not a note (notes are "
+            "for work already performed — use add_note for that instead). Works "
+            "for a brand-new prospect (just give their name — this tool creates "
+            "their client profile automatically, so do NOT call create_client "
+            "first) or an existing client. ALWAYS ask the user for a date before "
+            "calling this — a job without a date is not useful to schedule."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "client_name": {
+                    "type": "string",
+                    "description": "Name of the client/prospect the job is for.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Short description of the work needed (e.g. 'furnace not heating, needs repair').",
+                },
+                "job_date": {
+                    "type": "string",
+                    "description": (
+                        "The date the job is wanted/scheduled, as an ISO date "
+                        "(YYYY-MM-DD). Resolve relative phrases like 'next "
+                        "Thursday' or 'in two weeks' to an absolute date "
+                        "yourself, using today's date given in this system "
+                        "prompt, before calling this tool."
+                    ),
+                },
+                "phone": {
+                    "type": "string",
+                    "description": "Phone number, if known and the client is new.",
+                },
+            },
+            "required": ["client_name", "description", "job_date"],
+        },
+    },
+    {
         "name": "create_task",
         "description": (
             "Create and assign a task to a teammate — this is the default way "
@@ -260,12 +301,21 @@ ACTION_INSTRUCTIONS = (
     "- Before creating a new client, call find_client to check whether they "
     "already exist. If a match comes back, or you're unsure whether this is a new "
     "or existing client, VERIFY with the user rather than assuming.\n"
-    "- If the user is just describing a service or update for a client, save it "
-    "as a note on that client with add_note (do NOT create a new profile for an "
-    "existing client).\n"
+    "- If the user is describing work already DONE (a service performed, an "
+    "update, something that already happened), save it as a note on that "
+    "client with add_note (do NOT create a new profile for an existing "
+    "client).\n"
+    "- If the user is describing work that STILL NEEDS to happen — a job, "
+    "repair, installation, or estimate a client wants — use create_job "
+    "instead of add_note. This works whether the client already exists or is "
+    "brand new (just their name is enough). ALWAYS ask for a date before "
+    "calling create_job (even relative, like 'next Thursday'), resolve it to "
+    "an absolute YYYY-MM-DD using today's date above, read it back, and only "
+    "call create_job after the user confirms both the job description and "
+    "the date.\n"
     "- ALWAYS read back what you're about to save — the client name and the note/"
-    "profile details — and only call create_client or add_note AFTER the user "
-    "confirms. If they correct you, update and confirm again.\n"
+    "profile/job details — and only call create_client, add_note, or create_job "
+    "AFTER the user confirms. If they correct you, update and confirm again.\n"
     "- The MOMENT the user confirms, FIRST say a short acknowledgment out loud "
     "like 'Great, saving that now' BEFORE you call the tool. A save takes a "
     "couple seconds; if you stay silent the user assumes it didn't register and "
@@ -687,6 +737,65 @@ def _set_follow_up(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     }
 
 
+def _create_job(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
+    name = (args.get("client_name") or "").strip()
+    description = (args.get("description") or "").strip()
+    job_date = (args.get("job_date") or "").strip()
+    if not name:
+        return {"created": False, "error": "A client name is required."}
+    if not description:
+        return {"created": False, "error": "A description of the job is required."}
+    if not job_date:
+        return {"created": False, "error": "A job date is required — ask the user when the job is wanted."}
+
+    # Link to an existing client if there's an unambiguous match.
+    matches = _clients_for_name(db, agent_id, name)
+    exact = [c for c in matches if (c.get("name") or "").strip().lower() == name.lower()]
+    if len(matches) > 1 and not exact:
+        return {
+            "created": False, "status": "ambiguous",
+            "candidates": [{"id": c["id"], "name": c.get("name"), "phone": c.get("phone")} for c in matches],
+            "note": "Several clients match — ask the user which one.",
+        }
+    client = (exact or matches or [None])[0]
+
+    # A job must always be tied to a client record — never just a name
+    # floating in Leads/New Jobs with nothing in the Clients section. Create
+    # the profile now if this is a brand-new prospect.
+    client_created = False
+    if not client:
+        try:
+            client = db.table("clients").insert({
+                "agent_id": agent_id,
+                "name": name,
+                "phone": (args.get("phone") or None),
+                "type": "buyer",
+            }).execute().data[0]
+            client_created = True
+        except Exception as exc:
+            return {"created": False, "error": f"Could not create a client profile for this job: {exc}"}
+
+    payload = {
+        "agent_id": agent_id,
+        "client_id": client["id"],
+        "name": name,
+        "phone": client.get("phone") or (args.get("phone") or None),
+        "source": "assistant",
+        "status": "new",
+        "job_description": description,
+        "job_date": job_date,
+    }
+    try:
+        job = db.table("leads").insert(payload).execute().data[0]
+    except Exception as exc:
+        return {"created": False, "error": f"Could not create job: {exc}"}
+    return {
+        "created": True,
+        "client_created": client_created,
+        "job": {"id": job["id"], "name": job.get("name"), "job_date": job_date, "description": description},
+    }
+
+
 def _create_task(db, agent_id: str, args: dict, tz_name: str | None) -> dict:
     caller = db.table("agents").select("id, role, brokerage_id").eq("id", agent_id).single().execute().data
     if not caller or caller.get("role") not in ("admin", "manager"):
@@ -748,6 +857,7 @@ _DISPATCH = {
     "create_client": _create_client,
     "add_note": _add_note,
     "set_follow_up": _set_follow_up,
+    "create_job": _create_job,
     "create_task": _create_task,
 }
 

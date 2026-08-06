@@ -57,7 +57,16 @@ def _resolve_client(
     if phone_hint:
         for c in clients:
             if _normalize_phone(c.get("phone") or "") == phone_hint:
-                return c["id"], False, c.get("name")
+                name = c.get("name")
+                # A repeat caller matched by phone shouldn't stay "Unknown
+                # Client" forever just because an earlier call never caught
+                # their name — try to backfill it from THIS call's transcript.
+                if not name or name.strip().lower() == "unknown client":
+                    extracted = coaching_svc.identify_client(full_text, []).get("extracted_name")
+                    if extracted:
+                        db.table("clients").update({"name": extracted}).eq("id", c["id"]).execute()
+                        name = extracted
+                return c["id"], False, name
 
     # 2. AI name/context match
     result = coaching_svc.identify_client(full_text, clients)
@@ -118,23 +127,43 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
         }).eq("id", call_id).execute()
 
         # Resolve client if not manually provided
+        resolved_name = None
         if not client_id:
             try:
-                client_id, is_new_lead, lead_name = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint, brokerage_id)
+                client_id, _is_new_client, resolved_name = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint, brokerage_id)
                 if client_id:
                     db.table("calls").update({"client_id": client_id}).eq("id", call_id).execute()
-                if is_new_lead and client_id:
-                    db.table("leads").insert({
-                        "agent_id": agent_id,
-                        "name": lead_name or "Unknown Client",
-                        "phone": phone_hint,
-                        "source": "call",
-                        "status": "new",
-                        "call_id": call_id,
-                        **({"brokerage_id": brokerage_id} if brokerage_id else {}),
-                    }).execute()
             except Exception as resolve_err:
                 print(f"[calls] client resolution failed (non-fatal): {resolve_err}")
+
+        # Detect whether this call is a request for a new job — if so, surface
+        # it in the Leads ("New Jobs" for home-services orgs) section. Runs for
+        # EVERY call, new or existing client: an existing client calling about
+        # another job creates a lead too, not just first-time callers.
+        try:
+            job = coaching_svc.detect_job_request(utterances, call_start or existing_call_date)
+            # A job lead must always be tied to a client record (never just a
+            # name floating in Leads/New Jobs) — skip if client resolution
+            # above failed, rather than create an orphaned lead.
+            if job.get("needs_job") and client_id:
+                lead_name = resolved_name
+                if not lead_name and client_id:
+                    client_row = db.table("clients").select("name").eq("id", client_id).single().execute().data
+                    lead_name = (client_row or {}).get("name")
+                db.table("leads").insert({
+                    "agent_id": agent_id,
+                    "client_id": client_id,
+                    "name": lead_name or "Unknown Client",
+                    "phone": phone_hint,
+                    "source": "call",
+                    "status": "new",
+                    "call_id": call_id,
+                    "job_description": job.get("description"),
+                    "job_date": job.get("requested_date") or None,
+                    **({"brokerage_id": brokerage_id} if brokerage_id else {}),
+                }).execute()
+        except Exception as job_err:
+            print(f"[calls] job detection failed (non-fatal): {job_err}")
 
         call_type = coaching_svc.classify_call(utterances)
         realtor_speaker = coaching_svc.identify_realtor_speaker(utterances)
@@ -297,6 +326,9 @@ async def bland_webhook(request: Request, background_tasks: BackgroundTasks):
         "call_date":        created_at,
         "status":           "uploaded",
         "duration_seconds": duration_sec,
+        "from_number":      from_number or None,
+        "to_number":        to_number or None,
+        "direction":        direction,
     }).execute().data[0]
 
     # ── Trigger coaching pipeline in background ───────────────────
@@ -442,6 +474,9 @@ async def twilio_recording(request: Request, background_tasks: BackgroundTasks):
         "call_date":        datetime.utcnow().isoformat(),
         "status":           "uploaded",
         "duration_seconds": dur,
+        "from_number":      normalize_number(from_number) or None,
+        "to_number":        dialed or None,
+        "direction":        "inbound",
     }).execute().data[0]
 
     background_tasks.add_task(
@@ -500,6 +535,7 @@ async def upload_call(
         "audio_url": audio_url,
         "call_date": call_date,
         "status": "uploaded",
+        "from_number": phone_hint,
     }).execute().data[0]
 
     background_tasks.add_task(_process_call, call["id"], effective_agent_id, audio_url, client_id, phone_hint, file_modified_at)

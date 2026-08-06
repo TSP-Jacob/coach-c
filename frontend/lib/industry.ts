@@ -56,6 +56,30 @@ export const CALL_TYPE_LABELS: Record<IndustryMode, Record<string, string>> = {
   },
 };
 
+// Section labels for the Leads and Agents areas (nav + page headers).
+export const SECTION_LABELS: Record<IndustryMode, {
+  leads: string;
+  agents: string;
+  leadsEmpty: string;
+  agentsEmpty: string;
+  dashboardLeads: string;
+}> = {
+  real_estate: {
+    leads:          "Leads",
+    agents:         "Agents",
+    leadsEmpty:     "No leads yet. Leads are created automatically from new callers and Home Value submissions.",
+    agentsEmpty:    "No agents found.",
+    dashboardLeads: "New Leads",
+  },
+  home_services: {
+    leads:          "New Jobs",
+    agents:         "Employees",
+    leadsEmpty:     "No new jobs yet. Jobs are created automatically from new callers and Home Value submissions.",
+    agentsEmpty:    "No employees found.",
+    dashboardLeads: "New Jobs",
+  },
+};
+
 export function clientTypeLabel(mode: IndustryMode, type?: string): string {
   return CLIENT_TYPE_LABELS[mode][type ?? ""] ?? type ?? "";
 }

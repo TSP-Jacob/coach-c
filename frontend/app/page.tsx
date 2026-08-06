@@ -6,6 +6,7 @@ import ScoreBadge from "@/components/ScoreBadge";
 import ScoreTrend from "@/components/ScoreTrend";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { SECTION_LABELS } from "@/lib/industry";
 import { TrendingUp, TrendingDown, Minus, AlertCircle, Star, Sparkles } from "lucide-react";
 
 const CALL_TYPE_LABELS: Record<string, string> = {
@@ -60,7 +61,8 @@ function OverviewCard({ text, loading }: { text?: string; loading: boolean }) {
 }
 
 export default function Dashboard() {
-  const { agentId: AGENT_ID, features } = useAuth();
+  const { agentId: AGENT_ID, features, industryMode } = useAuth();
+  const sectionLabels = SECTION_LABELS[industryMode];
   const coaching = features.call_coaching;
   const showLeads = features.leads !== false;
   const showFollowUps = features.follow_ups !== false;
@@ -114,7 +116,7 @@ export default function Dashboard() {
       <div className={`grid grid-cols-2 ${STATS_GRID_COLS[1 + (showLeads ? 1 : 0) + (showFollowUps ? 1 : 0)]} gap-px bg-warm-border border border-warm-border`}>
         {showLeads && (
           <StatCard
-            label="New Leads"
+            label={sectionLabels.dashboardLeads}
             value={overview ? String(overview.new_leads_count) : "—"}
             delta="awaiting response"
             href="/leads"
