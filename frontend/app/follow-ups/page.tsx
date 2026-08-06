@@ -24,19 +24,20 @@ function addDays(d: Date, n: number): Date {
   return out;
 }
 
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+function fmtDate(d: Date, language: string): string {
+  return d.toLocaleDateString(language === "fr" ? "fr-CA" : "en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-function fmtRange(start: Date): string {
+function fmtRange(start: Date, language: string): string {
   const end = addDays(start, 6);
-  return `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  const locale = language === "fr" ? "fr-CA" : "en-US";
+  return `${start.toLocaleDateString(locale, { month: "short", day: "numeric" })} – ${end.toLocaleDateString(locale, { month: "short", day: "numeric" })}`;
 }
 
 type Group = { key: string; label: string; sub?: string; clients: Client[] };
 
 export default function FollowUpsPage() {
-  const { agentId, role } = useAuth();
+  const { agentId, role, language, t } = useAuth();
   const canManage = role === "admin" || role === "manager";
   const { data: clients = [], mutate } = useSWR<Client[]>(
     agentId ? ["follow-ups", canManage ? "org" : agentId] : null,
@@ -100,11 +101,11 @@ export default function FollowUpsPage() {
 
     const out: Group[] = [];
     if (overdue.length)  out.push({ key: "overdue",   label: "Overdue",   clients: overdue });
-    if (thisWeek.length) out.push({ key: "this_week", label: "This Week", sub: fmtRange(thisWeekStart), clients: thisWeek });
-    if (nextWeek.length) out.push({ key: "next_week", label: "Next Week", sub: fmtRange(nextWeekStart), clients: nextWeek });
+    if (thisWeek.length) out.push({ key: "this_week", label: "This Week", sub: fmtRange(thisWeekStart, language), clients: thisWeek });
+    if (nextWeek.length) out.push({ key: "next_week", label: "Next Week", sub: fmtRange(nextWeekStart, language), clients: nextWeek });
     if (later.length)    out.push({ key: "later",     label: "Later",     clients: later });
     return out;
-  }, [clients]);
+  }, [clients, language]);
 
   const total = clients.filter(c => c.follow_up_date).length;
 
@@ -112,16 +113,16 @@ export default function FollowUpsPage() {
     <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div className="border-b border-warm-border pb-5">
-        <h1 className="text-4xl font-serif font-bold text-charcoal">Follow-Ups</h1>
+        <h1 className="text-4xl font-serif font-bold text-charcoal">{t("Follow-Ups")}</h1>
         <p className="text-xs text-muted mt-1 tracking-widest uppercase">
-          {total} scheduled
+          {total} {t("scheduled")}
         </p>
       </div>
 
       {groups.length === 0 && (
         <div className="bg-white border border-warm-border px-6 py-8">
           <p className="text-muted text-sm italic font-serif">
-            No follow-ups scheduled. Set a follow-up date from a client&apos;s profile in Clients, or ask the assistant to schedule one.
+            {t("No follow-ups scheduled. Set a follow-up date from a client's profile in Clients, or ask the assistant to schedule one.")}
           </p>
         </div>
       )}
@@ -130,7 +131,7 @@ export default function FollowUpsPage() {
         <div key={group.key} className="space-y-3">
           <div className="flex items-baseline gap-2">
             <h2 className={`text-xs tracking-widest uppercase ${group.key === "overdue" ? "text-brand" : "text-muted"}`}>
-              {group.label}
+              {t(group.label)}
             </h2>
             {group.sub && <span className="text-[10px] text-muted">{group.sub}</span>}
             <span className="text-[10px] text-muted">· {group.clients.length}</span>
@@ -171,7 +172,7 @@ export default function FollowUpsPage() {
                   <div className="flex items-center gap-1.5">
                     <CalendarClock size={13} className={isOverdue ? "text-brand" : "text-muted"} />
                     <span className={`text-sm ${isOverdue ? "text-brand font-medium" : "text-charcoal"}`}>
-                      {c.follow_up_date ? fmtDate(parseDateOnly(c.follow_up_date)) : "—"}
+                      {c.follow_up_date ? fmtDate(parseDateOnly(c.follow_up_date), language) : "—"}
                     </span>
                   </div>
 
@@ -195,14 +196,14 @@ export default function FollowUpsPage() {
                         onClick={() => { setEditingId(c.id); setDraftDate(c.follow_up_date ?? ""); }}
                         className="text-xs px-2.5 py-1.5 border border-warm-border text-muted hover:text-charcoal hover:bg-cream transition-colors flex items-center gap-1.5"
                       >
-                        <Pencil size={11} /> Reschedule
+                        <Pencil size={11} /> {t("Reschedule")}
                       </button>
                     )}
                     <button
                       onClick={() => handleComplete(c.id)}
                       className="text-xs px-2.5 py-1.5 bg-brand text-white hover:opacity-90 transition-opacity flex items-center gap-1.5 whitespace-nowrap"
                     >
-                      <Check size={11} /> Mark Complete
+                      <Check size={11} /> {t("Mark Complete")}
                     </button>
                   </div>
                 </div>

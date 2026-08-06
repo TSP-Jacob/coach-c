@@ -150,7 +150,25 @@ def get_my_agent(jwt_agent_id: str = Depends(get_jwt_agent_id)):
     # Always hand the frontend a complete, defaulted feature set (works whether
     # or not the feature_flags column has been added yet).
     data["feature_flags"] = merged_features(data.get("feature_flags"))
+    data.setdefault("language", "en")
     return data
+
+
+class LanguageUpdate(BaseModel):
+    language: str  # "en" | "fr"
+
+
+@router.patch("/me/language")
+def update_my_language(body: LanguageUpdate, jwt_agent_id: str = Depends(get_jwt_agent_id)):
+    """Self-service — any authenticated agent can set their own display language."""
+    if not jwt_agent_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    lang = body.language.strip().lower()
+    if lang not in ("en", "fr"):
+        raise HTTPException(status_code=400, detail="language must be 'en' or 'fr'")
+    db = get_supabase()
+    db.table("agents").update({"language": lang}).eq("id", jwt_agent_id).execute()
+    return {"language": lang}
 
 
 # ─── Admin: team management ───────────────────────────────────────────────────

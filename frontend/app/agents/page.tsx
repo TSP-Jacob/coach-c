@@ -13,7 +13,7 @@ const roleBadge: Record<string, string> = {
 };
 
 export default function AgentsPage() {
-  const { agentId, features, industryMode, loading: authLoading } = useAuth();
+  const { agentId, features, industryMode, loading: authLoading, t } = useAuth();
   const labels = SECTION_LABELS[industryMode];
   const coaching = features.call_coaching;
   // SWR-cached; the global config revalidates on focus/navigation, which is
@@ -31,23 +31,23 @@ export default function AgentsPage() {
   return (
     <div className="max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">{labels.agents}</h1>
-        <p className="text-sm text-gray-400 mt-1">Performance overview for your team</p>
+        <h1 className="text-2xl font-bold">{t(labels.agents)}</h1>
+        <p className="text-sm text-gray-400 mt-1">{t("Performance overview for your team")}</p>
       </div>
 
       {/* Org roll-up */}
       {!loading && team.length > 0 && (
         <div className={`grid ${coaching ? "grid-cols-3" : "grid-cols-2"} gap-4`}>
-          <Stat label="Team Members" value={String(team.length)} />
-          <Stat label="Total Calls" value={String(totalCalls)} />
-          {coaching && <Stat label="Avg Score" value={orgAvg != null ? `${orgAvg}/100` : "—"} />}
+          <Stat label={t("Team Members")} value={String(team.length)} />
+          <Stat label={t("Total Calls")} value={String(totalCalls)} />
+          {coaching && <Stat label={t("Avg Score")} value={orgAvg != null ? `${orgAvg}/100` : "—"} />}
         </div>
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
-        {loading && <p className="text-sm text-gray-400 p-6">Loading…</p>}
+        {loading && <p className="text-sm text-gray-400 p-6">{t("Loading…")}</p>}
         {!loading && team.length === 0 && (
-          <p className="text-sm text-gray-400 p-6">{labels.agentsEmpty}</p>
+          <p className="text-sm text-gray-400 p-6">{t(labels.agentsEmpty)}</p>
         )}
         {team.map(m => (
           <Link key={m.id} href={`/agents/${m.id}`}
@@ -68,7 +68,7 @@ export default function AgentsPage() {
             <div className="flex items-center gap-8 text-sm">
               <div className="flex items-center gap-2 text-gray-500">
                 <Phone size={14} />
-                <span>{m.total_calls} calls</span>
+                <span>{m.total_calls} {t("calls")}</span>
               </div>
               {coaching && (
                 <div className="flex items-center gap-2 text-gray-500">

@@ -55,7 +55,7 @@ function passesScore(call: Call, filter: string): boolean {
 }
 
 export default function CallsPage() {
-  const { agentId: AGENT_ID, features } = useAuth();
+  const { agentId: AGENT_ID, features, t } = useAuth();
   // SWR-cached: instant on revisit, shares the "calls" cache with the dashboard.
   const { data: calls = [], mutate: reloadCalls } = useSWR<Call[]>(
     AGENT_ID ? ["calls", AGENT_ID] : null,
@@ -73,7 +73,7 @@ export default function CallsPage() {
   const remove = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     await api.calls.delete(id);
-    toast("Call deleted");
+    toast(t("Call deleted"));
     reloadCalls();
   };
 
@@ -103,17 +103,17 @@ export default function CallsPage() {
       {/* Header */}
       <div className="flex items-end justify-between border-b border-warm-border pb-5">
         <div>
-          <h1 className="text-4xl font-serif font-bold text-charcoal">Calls</h1>
+          <h1 className="text-4xl font-serif font-bold text-charcoal">{t("Calls")}</h1>
           <p className="text-xs text-muted mt-1 tracking-widest uppercase">
             {filtered.length !== calls.length
-              ? `${filtered.length} of ${calls.length} recording${calls.length !== 1 ? "s" : ""}`
-              : `${calls.length} recording${calls.length !== 1 ? "s" : ""}`}
+              ? `${filtered.length} ${t("of")} ${calls.length} ${t("recordings")}`
+              : `${calls.length} ${t("recordings")}`}
           </p>
         </div>
         <button
           onClick={() => setShowUpload(v => !v)}
           className="bg-brand text-white text-sm px-5 py-2.5 hover:bg-brand-dark transition-colors tracking-wide">
-          + Upload Call
+          {t("+ Upload Call")}
         </button>
       </div>
 
@@ -121,7 +121,7 @@ export default function CallsPage() {
         <CallUpload agentId={AGENT_ID ?? ""} onSuccess={() => {
           setShowUpload(false);
           reloadCalls();
-          toast("Call uploaded — analysis started");
+          toast(t("Call uploaded — analysis started"));
         }} />
       )}
 
@@ -131,7 +131,7 @@ export default function CallsPage() {
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by client name or call type…"
+            placeholder={t("Search by client name or call type…")}
             className="w-full pl-9 pr-4 py-2.5 text-sm border border-warm-border bg-white focus:outline-none focus:border-brand transition-colors" />
         </div>
 
@@ -139,26 +139,26 @@ export default function CallsPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
             className="px-3 py-2 text-xs border border-warm-border bg-white focus:outline-none focus:border-brand appearance-none transition-colors">
-            <option value="all">All types</option>
-            {types.map(t => <option key={t} value={t}>{CALL_TYPE_LABELS[t] ?? t}</option>)}
+            <option value="all">{t("All types")}</option>
+            {types.map(ct => <option key={ct} value={ct}>{t(CALL_TYPE_LABELS[ct] ?? ct)}</option>)}
           </select>
 
           <select value={dateFilter} onChange={e => setDateFilter(e.target.value)}
             className="px-3 py-2 text-xs border border-warm-border bg-white focus:outline-none focus:border-brand appearance-none transition-colors">
-            {DATE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {DATE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
           </select>
 
           {features.call_coaching && (
             <select value={scoreFilter} onChange={e => setScoreFilter(e.target.value)}
               className="px-3 py-2 text-xs border border-warm-border bg-white focus:outline-none focus:border-brand appearance-none transition-colors">
-              {SCORE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {SCORE_OPTIONS.map(o => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
             </select>
           )}
 
           {hasActiveFilter && (
             <button onClick={clearFilters}
               className="flex items-center gap-1.5 text-xs text-brand hover:text-brand-dark transition-colors px-2 py-2">
-              <X size={11} /> Clear filters
+              <X size={11} /> {t("Clear filters")}
             </button>
           )}
         </div>
@@ -168,7 +168,7 @@ export default function CallsPage() {
       <div className="bg-white border border-warm-border divide-y divide-warm-border">
         {filtered.length === 0 && (
           <p className="text-muted text-sm px-6 py-8 italic font-serif">
-            {calls.length === 0 ? "No calls yet. Upload your first recording." : "No calls match your filters."}
+            {calls.length === 0 ? t("No calls yet. Upload your first recording.") : t("No calls match your filters.")}
           </p>
         )}
         {filtered.map(call => {
@@ -187,7 +187,7 @@ export default function CallsPage() {
                       {call.clients?.name ?? "Unknown client"}
                     </Link>
                   ) : (
-                    <span className="text-sm font-medium text-muted italic">No client linked</span>
+                    <span className="text-sm font-medium text-muted italic">{t("No client linked")}</span>
                   )}
                   {agent && (
                     <Link
@@ -202,18 +202,18 @@ export default function CallsPage() {
                 <Link href={`/calls/${call.id}`} className="block">
                   <p className="text-xs text-muted mt-0.5 flex items-center gap-1 flex-wrap">
                     {call.direction === "inbound" ? (
-                      <span className="inline-flex items-center gap-1 text-muted" title="Inbound call">
-                        <PhoneIncoming size={11} /> Inbound
+                      <span className="inline-flex items-center gap-1 text-muted" title={t("Inbound")}>
+                        <PhoneIncoming size={11} /> {t("Inbound")}
                       </span>
                     ) : call.direction === "outbound" ? (
-                      <span className="inline-flex items-center gap-1 text-muted" title="Outbound call">
-                        <PhoneOutgoing size={11} /> Outbound
+                      <span className="inline-flex items-center gap-1 text-muted" title={t("Outbound")}>
+                        <PhoneOutgoing size={11} /> {t("Outbound")}
                       </span>
                     ) : null}
                     {call.direction && " · "}
                     {call.status === "missed"
-                      ? "Missed"
-                      : `${CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified"} · ${call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"}`
+                      ? t("Missed")
+                      : `${t(CALL_TYPE_LABELS[call.call_type ?? ""] ?? "Unclassified")} · ${call.duration_seconds ? `${Math.round(call.duration_seconds / 60)} min` : "—"}`
                     } ·{" "}
                     {new Date(dateStr).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </p>

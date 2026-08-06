@@ -42,7 +42,7 @@ OUTPUT_SAMPLE_RATE = 24000  # what Gemini sends back
 
 
 def _system_instruction(agent_name: str, tz_name: str | None, recent_context: str = "",
-                        industry_mode: str | None = None) -> str:
+                        industry_mode: str | None = None, language: str | None = None) -> str:
     today = date.today().isoformat()
     base = (
         f"{_COACHING_PROMPT}\n\n"
@@ -52,6 +52,8 @@ def _system_instruction(agent_name: str, tz_name: str | None, recent_context: st
         + "You are having a spoken conversation, so keep replies natural, warm, "
         "and concise — a sentence or two unless asked for detail. "
     )
+    if language == "fr":
+        base += "Speak in natural, conversational French (Québécois-friendly), regardless of what language the user speaks. "
     if recent_context:
         base += (
             "\n\nBelow are the agent's recent records — their calls, clients, and "
@@ -143,10 +145,12 @@ async def voice_live(ws: WebSocket):
 
     db = get_supabase()
     industry_mode = None
+    language = "en"
     try:
-        agent = db.table("agents").select("name, brokerages(industry_mode)").eq("id", agent_id).single().execute()
+        agent = db.table("agents").select("name, language, brokerages(industry_mode)").eq("id", agent_id).single().execute()
         agent_name = agent.data["name"] if agent.data else "the agent"
         industry_mode = (agent.data.get("brokerages") or {}).get("industry_mode") if agent.data else None
+        language = (agent.data or {}).get("language") or "en"
     except Exception:
         agent_name = "the agent"
 
@@ -173,7 +177,7 @@ async def voice_live(ws: WebSocket):
         # Native-audio: respond to the user's tone for more natural, less robotic
         # turn-taking (proactivity isn't supported on this model yet).
         "enable_affective_dialog": True,
-        "system_instruction": _system_instruction(agent_name, tz_name, recent_context, industry_mode),
+        "system_instruction": _system_instruction(agent_name, tz_name, recent_context, industry_mode, language),
         "tools": [{"function_declarations": TOOL_DECLARATIONS}],
         # Turn-taking: respond sooner after the user stops talking. The model's
         # default end-of-speech window is conservative and is the main per-turn

@@ -43,12 +43,14 @@ def dashboard_overview(jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
     overdue = [f for f in follow_ups if f.get("follow_up_date") and f["follow_up_date"] < today]
 
     try:
-        agent = db.table("agents").select("name").eq("id", jwt_agent_id).single().execute()
+        agent = db.table("agents").select("name, language").eq("id", jwt_agent_id).single().execute()
         agent_name = agent.data["name"] if agent.data else "there"
+        language = (agent.data or {}).get("language") or "en"
     except Exception:
         agent_name = "there"
+        language = "en"
 
-    overview = coaching_svc.summarize_actions(leads, follow_ups, len(overdue), agent_name)
+    overview = coaching_svc.summarize_actions(leads, follow_ups, len(overdue), agent_name, language)
 
     return {
         "new_leads_count": len(leads),

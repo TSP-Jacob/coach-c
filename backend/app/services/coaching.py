@@ -38,7 +38,7 @@ class CoachingService:
         )
         return message.content[0].text.strip().lower()
 
-    def detect_job_request(self, utterances: list[dict], today_hint: str | None = None) -> dict:
+    def detect_job_request(self, utterances: list[dict], today_hint: str | None = None, language: str = "en") -> dict:
         """Decide whether the caller is asking to have work/a job done (a
         repair, installation, estimate, maintenance visit, etc.) — as opposed
         to a call with no actionable work request (billing question, wrong
@@ -46,6 +46,7 @@ class CoachingService:
         and pull out any date they gave for it."""
         today = today_hint or date.today().isoformat()
         sample = "\n".join(f"{u['speaker']}: {u['text']}" for u in utterances[:60])
+        lang_note = " Write the description in French." if language == "fr" else ""
         message = self.client.messages.create(
             model=self.model,
             max_tokens=200,
@@ -65,7 +66,7 @@ class CoachingService:
                     'requested, or null>", '
                     '"requested_date": "<ISO YYYY-MM-DD if the caller gave a '
                     "specific date or day (resolve relative phrases like 'next "
-                    "Tuesday' using today's date above), else null>\"}"
+                    f"Tuesday' using today's date above), else null>\"}}{lang_note}"
                 ),
             }],
         )
@@ -102,6 +103,7 @@ class CoachingService:
         call_type: str,
         realtor_speaker: str,
         client_notes: str = "",
+        language: str = "en",
     ) -> dict:
         guidelines = _load_guidelines(call_type)
         labeled_transcript = "\n".join(
@@ -110,6 +112,13 @@ class CoachingService:
         )
 
         context_block = f"CLIENT FILE NOTES:\n{client_notes}\n\n" if client_notes else ""
+        lang_note = (
+            "\n\nWrite every text value in the JSON below (summary, strengths, "
+            "improvements, principle_scores comments, priority_focus) in "
+            "natural, conversational French. Keep the JSON keys and the "
+            "numeric scores exactly as specified — only the text content "
+            "changes language."
+        ) if language == "fr" else ""
 
         user_prompt = f"""{context_block}CALL TYPE: {call_type.replace('_', ' ').title()}
 
@@ -135,7 +144,7 @@ Return a JSON object with this exact structure:
     "<principle_name>": {{ "score": <0-10>, "comment": "<one line>" }}
   }},
   "priority_focus": "<the single most impactful thing to work on next call>"
-}}"""
+}}{lang_note}"""
 
         message = self.client.messages.create(
             model=self.model,
@@ -158,11 +167,12 @@ Return a JSON object with this exact structure:
         follow_ups: list[dict],
         overdue_count: int,
         agent_name: str = "there",
+        language: str = "en",
     ) -> str:
         """One-sentence, dashboard-header summary of what needs attention
         among new leads and scheduled follow-ups."""
         if not leads and not follow_ups:
-            return "You're all caught up — no new leads or follow-ups need attention."
+            return self._fallback_action_summary(leads, follow_ups, overdue_count, language)
 
         lead_lines = "\n".join(
             f"- {l.get('name') or 'Unknown'} (via {l.get('source') or 'unknown source'})"
@@ -173,6 +183,7 @@ Return a JSON object with this exact structure:
             for f in follow_ups[:10]
         ) or "none"
 
+        lang_note = " Write the sentence in natural, conversational French." if language == "fr" else ""
         user_prompt = f"""New leads awaiting a first response:
 {lead_lines}
 
@@ -181,7 +192,7 @@ Scheduled follow-ups:
 
 {overdue_count} of those follow-ups are overdue.
 
-In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} what to prioritize right now. Name specific people only if there are 3 or fewer items total; otherwise summarize by count."""
+In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} what to prioritize right now. Name specific people only if there are 3 or fewer items total; otherwise summarize by count.{lang_note}"""
 
         try:
             message = self.client.messages.create(
@@ -190,12 +201,25 @@ In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} wh
                 system="You write brief, direct action-item summaries for a busy service-business owner. No preamble, no markdown, exactly one sentence.",
                 messages=[{"role": "user", "content": user_prompt}],
             )
-            return _text_of(message) or self._fallback_action_summary(leads, follow_ups, overdue_count)
+            return _text_of(message) or self._fallback_action_summary(leads, follow_ups, overdue_count, language)
         except Exception:
-            return self._fallback_action_summary(leads, follow_ups, overdue_count)
+            return self._fallback_action_summary(leads, follow_ups, overdue_count, language)
 
     @staticmethod
-    def _fallback_action_summary(leads: list[dict], follow_ups: list[dict], overdue_count: int) -> str:
+    def _fallback_action_summary(leads: list[dict], follow_ups: list[dict], overdue_count: int, language: str = "en") -> str:
+        if language == "fr":
+            if not leads and not follow_ups:
+                return "Vous êtes à jour — aucun nouveau prospect ni suivi n'exige d'attention."
+            parts = []
+            if leads:
+                parts.append(f"{len(leads)} nouveau{'x' if len(leads) != 1 else ''} prospect{'s' if len(leads) != 1 else ''} en attente d'une première réponse")
+            if follow_ups:
+                suffix = f" ({overdue_count} en retard)" if overdue_count else ""
+                parts.append(f"{len(follow_ups)} suivi{'s' if len(follow_ups) != 1 else ''} prévu{'s' if len(follow_ups) != 1 else ''}{suffix}")
+            return (" et ".join(parts) + ".") if parts else "Vous êtes à jour."
+
+        if not leads and not follow_ups:
+            return "You're all caught up — no new leads or follow-ups need attention."
         parts = []
         if leads:
             parts.append(f"{len(leads)} new lead{'s' if len(leads) != 1 else ''} awaiting response")
@@ -267,6 +291,7 @@ In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} wh
         tool_executor=None,
         industry: str | None = None,
         tz_name: str | None = None,
+        language: str = "en",
     ) -> str:
         today = date.today().isoformat()
         system = (
@@ -276,6 +301,8 @@ In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} wh
         )
         if industry:
             system += f"\n\nThis organization operates in {industry}. Use {industry} terminology (e.g. clients, jobs, services) rather than real-estate-specific terms where possible."
+        if language == "fr":
+            system += "\n\nRespond in natural, conversational French (Québécois-friendly), regardless of what language the user writes in."
 
         if calls_context:
             system += f"\n\nAGENT'S CALL HISTORY (use this to answer questions about specific calls, clients, scores, and dates):\n{calls_context}"

@@ -18,57 +18,60 @@ const METHOD_LABEL: Record<string, string> = {
 };
 
 function SourceBadge({ source }: { source: Lead["source"] }) {
+  const { t } = useAuth();
   if (source === "call") {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 whitespace-nowrap">
-        Call
+        {t("Call")}
       </span>
     );
   }
   if (source === "assistant") {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full border border-purple-200 bg-purple-50 text-purple-700 whitespace-nowrap">
-        Assistant
+        {t("Assistant Source")}
       </span>
     );
   }
   return (
     <span className="text-xs px-2 py-0.5 rounded-full border border-green-200 bg-green-50 text-green-700 whitespace-nowrap">
-      Home Value
+      {t("Home Value")}
     </span>
   );
 }
 
 function StatusBadge({ status, method }: { status: Lead["status"]; method?: string }) {
+  const { t } = useAuth();
   if (status === "contacted") {
     return (
       <span className="text-xs px-2 py-0.5 border border-amber-200 bg-amber-50 text-amber-700 whitespace-nowrap">
-        Contacted · {method ? METHOD_LABEL[method] : ""}
+        {t("Contacted")} · {method ? t(METHOD_LABEL[method]) : ""}
       </span>
     );
   }
   if (status === "converted") {
     return (
       <span className="text-xs px-2 py-0.5 border border-green-200 bg-green-50 text-green-700 whitespace-nowrap">
-        Converted
+        {t("Converted")}
       </span>
     );
   }
   if (status === "lost") {
     return (
       <span className="text-xs px-2 py-0.5 border border-warm-border bg-white text-muted whitespace-nowrap">
-        Lost
+        {t("Lost")}
       </span>
     );
   }
   return (
     <span className="text-xs px-2 py-0.5 border border-brand/30 bg-brand-light text-brand whitespace-nowrap">
-      New
+      {t("New")}
     </span>
   );
 }
 
 function RespondPopover({ onSelect }: { onSelect: (method: string) => void }) {
+  const { t } = useAuth();
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
 
@@ -87,18 +90,18 @@ function RespondPopover({ onSelect }: { onSelect: (method: string) => void }) {
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
         className="text-xs px-3 py-1.5 bg-brand text-white hover:opacity-90 transition-opacity whitespace-nowrap"
       >
-        Log Response
+        {t("Log Response")}
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-warm-border shadow-lg min-w-[160px]">
-          <p className="text-[10px] tracking-widest uppercase text-muted px-3 pt-3 pb-1">How did you reach out?</p>
+          <p className="text-[10px] tracking-widest uppercase text-muted px-3 pt-3 pb-1">{t("How did you reach out?")}</p>
           {CONTACT_METHODS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
               onClick={e => { e.stopPropagation(); onSelect(value); setOpen(false); }}
               className="flex items-center gap-2.5 w-full text-left px-3 py-2.5 text-sm text-charcoal hover:bg-cream transition-colors"
             >
-              <Icon size={13} className="text-muted shrink-0" /> {label}
+              <Icon size={13} className="text-muted shrink-0" /> {t(label)}
             </button>
           ))}
         </div>
@@ -108,7 +111,7 @@ function RespondPopover({ onSelect }: { onSelect: (method: string) => void }) {
 }
 
 export default function LeadsPage() {
-  const { agentId, role, industryMode } = useAuth();
+  const { agentId, role, industryMode, language, t } = useAuth();
   const labels = SECTION_LABELS[industryMode];
   const canManage = role === "admin" || role === "manager";
   const [sourceFilter, setSourceFilter] = useState("");
@@ -165,9 +168,11 @@ export default function LeadsPage() {
     <div className="max-w-5xl space-y-6">
       {/* Header */}
       <div className="border-b border-warm-border pb-5">
-        <h1 className="text-4xl font-serif font-bold text-charcoal">{labels.leads}</h1>
+        <h1 className="text-4xl font-serif font-bold text-charcoal">{t(labels.leads)}</h1>
         <p className="text-xs text-muted mt-1 tracking-widest uppercase">
-          {leads.length} total · {newCount} awaiting response
+          {language === "fr"
+            ? `${leads.length} au total · ${newCount} en attente de réponse`
+            : `${leads.length} total · ${newCount} awaiting response`}
         </p>
       </div>
 
@@ -178,20 +183,20 @@ export default function LeadsPage() {
           onChange={e => setSourceFilter(e.target.value)}
           className="text-sm border border-warm-border bg-white px-3 py-2 focus:outline-none focus:border-brand transition-colors"
         >
-          <option value="">All sources</option>
-          <option value="call">Call</option>
-          <option value="home_value">Home Value</option>
+          <option value="">{t("All sources")}</option>
+          <option value="call">{t("Call")}</option>
+          <option value="home_value">{t("Home Value")}</option>
         </select>
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
           className="text-sm border border-warm-border bg-white px-3 py-2 focus:outline-none focus:border-brand transition-colors"
         >
-          <option value="">All statuses</option>
-          <option value="new">New</option>
-          <option value="contacted">Contacted</option>
-          <option value="converted">Converted</option>
-          <option value="lost">Lost</option>
+          <option value="">{t("All statuses")}</option>
+          <option value="new">{t("New")}</option>
+          <option value="contacted">{t("Contacted")}</option>
+          <option value="converted">{t("Converted")}</option>
+          <option value="lost">{t("Lost")}</option>
         </select>
         {isAdmin && (
           <select
@@ -199,7 +204,7 @@ export default function LeadsPage() {
             onChange={e => setOrgFilter(e.target.value)}
             className="text-sm border border-warm-border bg-white px-3 py-2 focus:outline-none focus:border-brand transition-colors"
           >
-            <option value="">All organizations</option>
+            <option value="">{t("All organizations")}</option>
             {orgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
@@ -210,18 +215,18 @@ export default function LeadsPage() {
         {/* Column headers — desktop only; on mobile each lead stacks into a card */}
         <div className={`hidden md:grid ${canManage ? "md:grid-cols-[2fr_1fr_1.5fr_2fr_1.5fr]" : "md:grid-cols-[2fr_1fr_1.5fr_1.5fr]"} gap-4 px-6 py-3 border-b border-warm-border`}>
           {[
-            "Lead", "Source", "Contact",
-            ...(canManage ? ["Assigned Agent"] : []),
-            "Action"
-          ].map(h => (
-            <p key={h} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
+            t("Lead"), t("Source"), t("Contact"),
+            ...(canManage ? [t("Assigned Agent")] : []),
+            t("Action")
+          ].map((h, i) => (
+            <p key={i} className="text-[10px] tracking-widest uppercase text-muted">{h}</p>
           ))}
         </div>
 
         <div className="divide-y divide-warm-border">
           {leads.length === 0 && (
             <p className="text-muted text-sm px-6 py-8 italic font-serif">
-              {labels.leadsEmpty}
+              {t(labels.leadsEmpty)}
             </p>
           )}
 
@@ -246,7 +251,7 @@ export default function LeadsPage() {
                     )}
                     {lead.job_date && (
                       <p className="text-[10px] text-brand mt-1 tracking-wide">
-                        Wanted {new Date(lead.job_date + "T00:00:00").toLocaleDateString()}
+                        {t("Wanted")} {new Date(lead.job_date + "T00:00:00").toLocaleDateString()}
                       </p>
                     )}
                     {hasPropertyDetail && (
@@ -254,7 +259,7 @@ export default function LeadsPage() {
                         onClick={() => setExpandedId(isExpanded ? null : lead.id)}
                         className="text-[10px] text-brand mt-1 tracking-wide hover:opacity-75 transition-opacity"
                       >
-                        {isExpanded ? "Hide details ↑" : "View property ↓"}
+                        {isExpanded ? t("Hide details ↑") : t("View property ↓")}
                       </button>
                     )}
                   </div>
@@ -287,7 +292,7 @@ export default function LeadsPage() {
                         onChange={e => handleAssign(lead.id, e.target.value)}
                         className="text-xs border border-warm-border bg-white px-2 py-1.5 w-full focus:outline-none focus:border-brand transition-colors"
                       >
-                        <option value="">Unassigned</option>
+                        <option value="">{t("Unassigned")}</option>
                         {agents.map(a => (
                           <option key={a.id} value={a.id}>{a.name}</option>
                         ))}
@@ -312,13 +317,13 @@ export default function LeadsPage() {
                           onClick={() => handleStatusChange(lead.id, "converted")}
                           className="text-[10px] text-green-700 border border-green-200 px-2 py-0.5 hover:bg-green-50 transition-colors"
                         >
-                          Converted
+                          {t("Converted")}
                         </button>
                         <button
                           onClick={() => handleStatusChange(lead.id, "lost")}
                           className="text-[10px] text-muted border border-warm-border px-2 py-0.5 hover:bg-cream transition-colors"
                         >
-                          Lost
+                          {t("Lost")}
                         </button>
                       </div>
                     )}
@@ -330,7 +335,7 @@ export default function LeadsPage() {
                   <div className="px-4 md:px-6 pb-5 bg-cream border-t border-warm-border grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 pt-4">
                     {lead.address && (
                       <div>
-                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Address</p>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">{t("Address")}</p>
                         <p className="text-sm text-charcoal">
                           {lead.address}{lead.city ? `, ${lead.city}` : ""}{lead.province ? `, ${lead.province}` : ""}
                         </p>
@@ -338,19 +343,19 @@ export default function LeadsPage() {
                     )}
                     {lead.property_type && (
                       <div>
-                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Property Type</p>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">{t("Property Type")}</p>
                         <p className="text-sm text-charcoal capitalize">{lead.property_type}</p>
                       </div>
                     )}
                     {lead.estimated_value != null && (
                       <div>
-                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Estimated Value</p>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">{t("Estimated Value")}</p>
                         <p className="text-sm font-medium text-charcoal">${lead.estimated_value.toLocaleString()}</p>
                       </div>
                     )}
                     {lead.timeline_to_sell && (
                       <div>
-                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">Timeline to Sell</p>
+                        <p className="text-[10px] tracking-widest uppercase text-muted mb-1">{t("Timeline to Sell")}</p>
                         <p className="text-sm text-charcoal">{lead.timeline_to_sell}</p>
                       </div>
                     )}

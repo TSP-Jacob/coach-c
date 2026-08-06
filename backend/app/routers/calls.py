@@ -99,6 +99,12 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
     transcription_svc, coaching_svc = _get_services()
     db = get_supabase()
     try:
+        try:
+            agent_row = db.table("agents").select("language").eq("id", agent_id).single().execute().data
+            language = (agent_row or {}).get("language") or "en"
+        except Exception:
+            language = "en"
+
         db.table("calls").update({"status": "transcribing"}).eq("id", call_id).execute()
         transcript = transcription_svc.transcribe(audio_url)
         utterances = transcript["utterances"]
@@ -141,7 +147,7 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
         # EVERY call, new or existing client: an existing client calling about
         # another job creates a lead too, not just first-time callers.
         try:
-            job = coaching_svc.detect_job_request(utterances, call_start or existing_call_date)
+            job = coaching_svc.detect_job_request(utterances, call_start or existing_call_date, language)
             # A job lead must always be tied to a client record (never just a
             # name floating in Leads/New Jobs) — skip if client resolution
             # above failed, rather than create an orphaned lead.
@@ -174,7 +180,7 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
             print(f"[calls] RAG retrieval failed (non-fatal): {rag_err}")
             client_notes = ""
 
-        report = coaching_svc.analyze_call(utterances, call_type, realtor_speaker, client_notes)
+        report = coaching_svc.analyze_call(utterances, call_type, realtor_speaker, client_notes, language)
 
         db.table("calls").update({
             "status": "complete",

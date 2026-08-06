@@ -81,12 +81,13 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
 
     # Tolerate the industry_mode column not existing yet (migration 008).
     try:
-        agent = db.table("agents").select("name, brokerages(industry_mode)").eq("id", agent_id).single().execute()
+        agent = db.table("agents").select("name, language, brokerages(industry_mode)").eq("id", agent_id).single().execute()
         industry_mode = (agent.data.get("brokerages") or {}).get("industry_mode") if agent.data else None
     except Exception:
-        agent = db.table("agents").select("name").eq("id", agent_id).single().execute()
+        agent = db.table("agents").select("name, language").eq("id", agent_id).single().execute()
         industry_mode = None
     agent_name = agent.data["name"] if agent.data else "the realtor"
+    language = (agent.data or {}).get("language") or "en"
 
     # Let the assistant not just answer but record work — create client profiles
     # and save notes — through the same tools the voice assistant uses. The
@@ -105,6 +106,7 @@ def chat(body: ChatRequest, jwt_agent_id: str | None = Depends(get_jwt_agent_id)
         tool_executor=tool_executor,
         industry=industry_domain(industry_mode),
         tz_name=body.timezone,
+        language=language,
     )
 
     save_messages(db, agent_id, [

@@ -45,15 +45,15 @@ function StatCard({ label, value, delta, href }: { label: string; value: string;
   return <div className="bg-white border border-warm-border p-6">{content}</div>;
 }
 
-function OverviewCard({ text, loading }: { text?: string; loading: boolean }) {
+function OverviewCard({ text, loading, t }: { text?: string; loading: boolean; t: (s: string) => string }) {
   return (
     <div className="bg-white border border-warm-border p-6 flex flex-col justify-center">
       <div className="flex items-center gap-1.5 mb-3">
         <Sparkles size={11} className="text-brand" />
-        <p className="text-[10px] tracking-widest uppercase text-muted">AI Overview</p>
+        <p className="text-[10px] tracking-widest uppercase text-muted">{t("AI Overview")}</p>
       </div>
       {loading
-        ? <p className="text-sm text-muted italic">Thinking…</p>
+        ? <p className="text-sm text-muted italic">{t("Thinking…")}</p>
         : <p className="text-sm text-charcoal leading-relaxed">{text}</p>
       }
     </div>
@@ -61,7 +61,7 @@ function OverviewCard({ text, loading }: { text?: string; loading: boolean }) {
 }
 
 export default function Dashboard() {
-  const { agentId: AGENT_ID, features, industryMode } = useAuth();
+  const { agentId: AGENT_ID, features, industryMode, language, t } = useAuth();
   const sectionLabels = SECTION_LABELS[industryMode];
   const coaching = features.call_coaching;
   const showLeads = features.leads !== false;
@@ -96,41 +96,46 @@ export default function Dashboard() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const attentionSentence = language === "fr"
+    ? `${needsAttention} appel${needsAttention > 1 ? "s" : ""} ${needsAttention > 1 ? "nécessitent" : "nécessite"} votre attention.`
+    : `${needsAttention} call${needsAttention > 1 ? "s" : ""} need${needsAttention === 1 ? "s" : ""} your attention.`;
 
   return (
     <div className="space-y-8 max-w-5xl">
       {/* Header */}
       <div className="border-b border-warm-border pb-6">
         <h1 className="text-4xl font-serif font-bold text-charcoal leading-tight">
-          {greeting}.{" "}
+          {t(greeting)}.{" "}
           {coaching && needsAttention > 0 && (
             <span className="italic text-brand">
-              {needsAttention} call{needsAttention > 1 ? "s" : ""} need{needsAttention === 1 ? "s" : ""} your attention.
+              {attentionSentence}
             </span>
           )}
         </h1>
-        <p className="text-xs text-muted mt-2 tracking-widest uppercase">Coach-C · by Chardin Systems</p>
+        <p className="text-xs text-muted mt-2 tracking-widest uppercase">{t("Coach-C · by Chardin Systems")}</p>
       </div>
 
       {/* Stats grid */}
       <div className={`grid grid-cols-2 ${STATS_GRID_COLS[1 + (showLeads ? 1 : 0) + (showFollowUps ? 1 : 0)]} gap-px bg-warm-border border border-warm-border`}>
         {showLeads && (
           <StatCard
-            label={sectionLabels.dashboardLeads}
+            label={t(sectionLabels.dashboardLeads)}
             value={overview ? String(overview.new_leads_count) : "—"}
-            delta="awaiting response"
+            delta={t("awaiting response")}
             href="/leads"
           />
         )}
         {showFollowUps && (
           <StatCard
-            label="Follow Ups"
+            label={t("Follow Ups")}
             value={overview ? String(overview.follow_ups_count) : "—"}
-            delta={overview && overview.overdue_follow_ups_count > 0 ? `${overview.overdue_follow_ups_count} overdue` : "scheduled"}
+            delta={overview && overview.overdue_follow_ups_count > 0
+              ? (language === "fr" ? `${overview.overdue_follow_ups_count} en retard` : `${overview.overdue_follow_ups_count} overdue`)
+              : t("scheduled")}
             href="/follow-ups"
           />
         )}
-        <OverviewCard text={overview?.overview} loading={!overview} />
+        <OverviewCard text={overview?.overview} loading={!overview} t={t} />
       </div>
 
       {/* Coaching insights panel */}

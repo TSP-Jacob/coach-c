@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { IndustryMode, DEFAULT_MODE, normalizeMode } from "./industry";
+import { Language, DEFAULT_LANGUAGE, normalizeLanguage, translate } from "./i18n";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
@@ -43,6 +44,9 @@ interface AuthCtx {
   role: string | null;
   features: Features;
   industryMode: IndustryMode;
+  language: Language;
+  setLanguage: (lang: Language) => Promise<void>;
+  t: (text: string) => string;
   loading: boolean;
   // Resolves true if it already navigated away (SSO users get redirected to
   // the portal) — the caller should only navigate itself when this is
@@ -53,25 +57,27 @@ interface AuthCtx {
 
 const AuthContext = createContext<AuthCtx>({
   session: null, agentId: null, role: null, features: FEATURE_DEFAULTS,
-  industryMode: DEFAULT_MODE, loading: true,
+  industryMode: DEFAULT_MODE, language: DEFAULT_LANGUAGE,
+  setLanguage: async () => {}, t: (text: string) => text, loading: true,
   signOut: async () => false,
 });
 
-async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null; features: Features; industryMode: IndustryMode }> {
+async function fetchAgent(token: string): Promise<{ id: string | null; role: string | null; features: Features; industryMode: IndustryMode; language: Language }> {
   try {
     const res = await fetch(`${BASE}/api/agents/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return { id: null, role: null, features: FEATURE_DEFAULTS, industryMode: DEFAULT_MODE };
+    if (!res.ok) return { id: null, role: null, features: FEATURE_DEFAULTS, industryMode: DEFAULT_MODE, language: DEFAULT_LANGUAGE };
     const data = await res.json();
     return {
       id: data.id ?? null,
       role: data.role ?? null,
       features: mergeFeatures(data.feature_flags),
       industryMode: normalizeMode(data.brokerages?.industry_mode),
+      language: normalizeLanguage(data.language),
     };
   } catch {
-    return { id: null, role: null, features: FEATURE_DEFAULTS, industryMode: DEFAULT_MODE };
+    return { id: null, role: null, features: FEATURE_DEFAULTS, industryMode: DEFAULT_MODE, language: DEFAULT_LANGUAGE };
   }
 }
 
@@ -85,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     SKIP_AUTH ? { ...FEATURE_DEFAULTS, call_coaching: true } : FEATURE_DEFAULTS
   );
   const [industryMode, setIndustryMode] = useState<IndustryMode>(DEFAULT_MODE);
+  const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
   const [loading, setLoading] = useState(!SKIP_AUTH);
 
   useEffect(() => {
@@ -96,11 +103,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const extToken = urlToken || getExtToken();
     if (extToken) {
-      fetchAgent(extToken).then(({ id, role, features, industryMode }) => {
+      fetchAgent(extToken).then(({ id, role, features, industryMode, language }) => {
         setAgentId(id);
         setRole(role);
         setFeatures(features);
         setIndustryMode(industryMode);
+        setLanguageState(language);
         setLoading(false);
       });
       return;
@@ -109,11 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       if (session?.access_token) {
-        const { id, role, features, industryMode } = await fetchAgent(session.access_token);
+        const { id, role, features, industryMode, language } = await fetchAgent(session.access_token);
         setAgentId(id);
         setRole(role);
         setFeatures(features);
         setIndustryMode(industryMode);
+        setLanguageState(language);
       }
       setLoading(false);
     });
@@ -121,25 +130,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
       setSession(session);
       if (session?.access_token) {
-        const { id, role, features, industryMode } = await fetchAgent(session.access_token);
+        const { id, role, features, industryMode, language } = await fetchAgent(session.access_token);
         setAgentId(id);
         setRole(role);
         setFeatures(features);
         setIndustryMode(industryMode);
+        setLanguageState(language);
       } else {
         setAgentId(null);
         setRole(null);
         setFeatures(FEATURE_DEFAULTS);
         setIndustryMode(DEFAULT_MODE);
+        setLanguageState(DEFAULT_LANGUAGE);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  async function setLanguage(lang: Language) {
+    setLanguageState(lang); // optimistic — UI switches immediately
+    const token = getExtToken() || (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) return;
+    try {
+      await fetch(`${BASE}/api/agents/me/language`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ language: lang }),
+      });
+    } catch { /* best effort — local UI already switched */ }
+  }
+
   return (
     <AuthContext.Provider value={{
-      session, agentId, role, features, industryMode, loading,
+      session, agentId, role, features, industryMode, language, setLanguage,
+      t: (text: string) => translate(language, text),
+      loading,
       signOut: async () => {
       if (typeof window === "undefined") { await supabase.auth.signOut(); return false; }
 
