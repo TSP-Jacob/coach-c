@@ -3,6 +3,7 @@ import anthropic
 from datetime import date
 from pathlib import Path
 from app.config import settings
+from app.services.industry import domain as industry_domain, assistant_descriptor
 
 _SYSTEM_PROMPT = (Path(__file__).parent.parent / "prompts" / "coaching_system.txt").read_text()
 _GUIDELINES_DIR = Path(__file__).parent.parent / "prompts" / "guidelines"
@@ -84,15 +85,17 @@ class CoachingService:
         except Exception:
             return {"needs_job": False, "description": None, "requested_date": None}
 
-    def identify_realtor_speaker(self, utterances: list[dict]) -> str:
-        """Returns 'A' or 'B' — whichever speaker is the realtor."""
+    def identify_realtor_speaker(self, utterances: list[dict], industry_mode: str | None = None) -> str:
+        """Returns 'A' or 'B' — whichever speaker represents the business (the
+        realtor in real-estate mode, or the AI phone agent in home-services mode)."""
         sample = "\n".join(
             f"Speaker {u['speaker']}: {u['text']}" for u in utterances[:30]
         )
+        professional = assistant_descriptor(industry_mode)
         message = self.client.messages.create(
             model=self.model,
             max_tokens=10,
-            system="You identify which speaker in a real estate call is the realtor (agent). Reply with ONLY the letter A or B.",
+            system=f"You identify which speaker in this call is the {professional} representing the business, versus the customer calling in. Reply with ONLY the letter A or B — the letter for the {professional}'s speaker.",
             messages=[{"role": "user", "content": sample}],
         )
         return message.content[0].text.strip().upper()
@@ -104,10 +107,21 @@ class CoachingService:
         realtor_speaker: str,
         client_notes: str = "",
         language: str = "en",
+        industry_mode: str | None = None,
     ) -> dict:
         guidelines = _load_guidelines(call_type)
+
+        # Real-estate mode keeps the original realtor/client framing (the
+        # human-recorded-call use case this was built for). Every other mode
+        # (default: home_services) is an AI phone agent handling the business's
+        # calls — label it as such, both to Claude and, downstream, on screen.
+        if industry_mode == "real_estate":
+            agent_label, customer_label = "REALTOR", "CLIENT"
+        else:
+            agent_label, customer_label = "AI PHONE AGENT", "CUSTOMER"
+
         labeled_transcript = "\n".join(
-            f"{'[REALTOR]' if u['speaker'] == realtor_speaker else '[CLIENT]'} {u['text']}"
+            f"[{agent_label if u['speaker'] == realtor_speaker else customer_label}] {u['text']}"
             for u in utterances
         )
 
@@ -119,6 +133,18 @@ class CoachingService:
             "numeric scores exactly as specified — only the text content "
             "changes language."
         ) if language == "fr" else ""
+
+        system = _SYSTEM_PROMPT
+        if industry_mode != "real_estate":
+            system += (
+                f"\n\nThis particular call is for a {industry_domain(industry_mode)} "
+                "business, and the business side was handled by an AI phone agent "
+                "(not a human realtor) — evaluate it using general customer-service "
+                "and sales principles for this domain. Do NOT comment on whether it "
+                "resembles a typical real estate call, and do not use real-estate "
+                "terms like 'realtor' — call the business side the AI phone agent, "
+                "and the caller the customer, exactly as labeled in the transcript."
+            )
 
         user_prompt = f"""{context_block}CALL TYPE: {call_type.replace('_', ' ').title()}
 
@@ -149,7 +175,7 @@ Return a JSON object with this exact structure:
         message = self.client.messages.create(
             model=self.model,
             max_tokens=2000,
-            system=_SYSTEM_PROMPT,
+            system=system,
             messages=[{"role": "user", "content": user_prompt}],
         )
 

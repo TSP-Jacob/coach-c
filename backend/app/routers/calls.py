@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import Response
+from pydantic import BaseModel
 import httpx
 from app.database import get_supabase
 from app.config import settings
@@ -13,6 +14,9 @@ from app.services.coaching import CoachingService
 from app.services.rag import retrieve_context, index_client_notes
 from app.middleware.auth import get_jwt_agent_id
 from app.routers.phone_numbers import normalize_number
+from app.services.permissions import get_caller, require_manager
+from app.services import trash
+from app.services.industry import normalize_mode
 
 router = APIRouter()
 
@@ -105,8 +109,28 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
         except Exception:
             language = "en"
 
+        # Org name (for STT word-boost, so it doesn't come out phonetically
+        # garbled) and industry_mode (so coaching/labels use the right domain
+        # language instead of assuming real estate) — tolerate the
+        # industry_mode column not existing yet (migration 008), same pattern
+        # used elsewhere in this codebase.
+        org_name = None
+        industry_mode = None
+        if brokerage_id:
+            try:
+                org_row = db.table("brokerages").select("name, industry_mode").eq("id", brokerage_id).single().execute().data
+                org_name = (org_row or {}).get("name")
+                industry_mode = (org_row or {}).get("industry_mode")
+            except Exception:
+                try:
+                    org_row = db.table("brokerages").select("name").eq("id", brokerage_id).single().execute().data
+                    org_name = (org_row or {}).get("name")
+                except Exception:
+                    pass
+        industry_mode = normalize_mode(industry_mode)
+
         db.table("calls").update({"status": "transcribing"}).eq("id", call_id).execute()
-        transcript = transcription_svc.transcribe(audio_url)
+        transcript = transcription_svc.transcribe(audio_url, word_boost=[org_name] if org_name else None)
         utterances = transcript["utterances"]
         full_text = transcript.get("full_text", "")
 
@@ -172,7 +196,7 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
             print(f"[calls] job detection failed (non-fatal): {job_err}")
 
         call_type = coaching_svc.classify_call(utterances)
-        realtor_speaker = coaching_svc.identify_realtor_speaker(utterances)
+        realtor_speaker = coaching_svc.identify_realtor_speaker(utterances, industry_mode)
 
         try:
             client_notes = retrieve_context(agent_id, full_text[:500])
@@ -180,7 +204,7 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
             print(f"[calls] RAG retrieval failed (non-fatal): {rag_err}")
             client_notes = ""
 
-        report = coaching_svc.analyze_call(utterances, call_type, realtor_speaker, client_notes, language)
+        report = coaching_svc.analyze_call(utterances, call_type, realtor_speaker, client_notes, language, industry_mode)
 
         db.table("calls").update({
             "status": "complete",
@@ -548,6 +572,41 @@ async def upload_call(
     return {"id": call["id"], "status": "uploaded"}
 
 
+class ManualCallCreate(BaseModel):
+    agent_id: str | None = None  # defaults to the caller — set to log on a teammate's behalf
+    client_id: str | None = None
+    call_type: str | None = None
+    direction: str | None = None  # inbound | outbound
+    duration_seconds: int | None = None
+    call_date: str | None = None  # ISO timestamp
+
+
+@router.post("/manual")
+def create_manual_call(body: ManualCallCreate, jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    """Manager/admin-only: log a call that happened but was never recorded
+    (e.g. a call taken on a personal phone). No audio, no transcript."""
+    caller = get_caller(jwt_agent_id)
+    require_manager(caller, "Only managers can manually log a call")
+
+    target_agent_id = body.agent_id or caller["id"]
+    db = get_supabase()
+    if target_agent_id != caller["id"]:
+        target = db.table("agents").select("brokerage_id").eq("id", target_agent_id).maybe_single().execute()
+        if not target or not target.data or target.data["brokerage_id"] != caller["brokerage_id"]:
+            raise HTTPException(status_code=400, detail="That person isn't in your organization")
+
+    result = db.table("calls").insert({
+        "agent_id": target_agent_id,
+        "client_id": body.client_id,
+        "call_date": body.call_date,
+        "duration_seconds": body.duration_seconds,
+        "call_type": body.call_type,
+        "direction": body.direction,
+        "status": "complete",
+    }).execute()
+    return result.data[0]
+
+
 @router.get("/")
 def list_calls(
     agent_id: str | None = Query(None),
@@ -559,15 +618,15 @@ def list_calls(
     db = get_supabase()
     result = db.table("calls").select(
         "id, client_id, call_date, call_type, overall_score, status, duration_seconds, direction, created_at, coaching_report, clients(name)"
-    ).eq("agent_id", effective_agent_id).order("created_at", desc=True).execute()
+    ).eq("agent_id", effective_agent_id).is_("deleted_at", "null").order("created_at", desc=True).execute()
     return result.data
 
 
 @router.get("/{call_id}")
 def get_call(call_id: str):
     db = get_supabase()
-    result = db.table("calls").select("*, agents(name), clients(name)").eq("id", call_id).single().execute()
-    if not result.data:
+    result = db.table("calls").select("*, agents(name), clients(name)").eq("id", call_id).is_("deleted_at", "null").maybe_single().execute()
+    if not result or not result.data:
         raise HTTPException(404, "Call not found")
     call = result.data
     if call.get("audio_url"):
@@ -576,9 +635,11 @@ def get_call(call_id: str):
 
 
 @router.delete("/{call_id}")
-def delete_call(call_id: str):
+def delete_call(call_id: str, jwt_agent_id: str | None = Depends(get_jwt_agent_id)):
+    caller = get_caller(jwt_agent_id)
+    require_manager(caller, "Only managers can delete calls")
     db = get_supabase()
-    db.table("calls").delete().eq("id", call_id).execute()
+    trash.soft_delete(db, "calls", call_id, caller["id"])
     return {"deleted": True}
 
 
