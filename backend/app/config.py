@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # agent). Only enforced when the request has no logged-in JWT — browser
     # uploads from a signed-in user are unaffected either way.
     call_upload_secret: str = ""
+    # Shared secret for the live-call listen-in/takeover bridge to each org's
+    # phone-agent deployment (GET /live-calls and WS /admin-stream on that
+    # server). Same value must be set there. If unset, live calls are
+    # unavailable (the router degrades to an empty list / a clear error).
+    admin_stream_secret: str = ""
 
     class Config:
         env_file = ".env"
