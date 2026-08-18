@@ -254,8 +254,16 @@ In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} wh
             parts.append(f"{len(follow_ups)} follow-up{'s' if len(follow_ups) != 1 else ''} scheduled{suffix}")
         return (" and ".join(parts) + ".") if parts else "You're all caught up."
 
-    def identify_client(self, full_text: str, clients: list[dict]) -> dict:
+    def identify_client(self, customer_text: str, clients: list[dict], industry_mode: str | None = None) -> dict:
         """
+        `customer_text` must be ONLY the caller's own lines — the business
+        side (the realtor, or an AI phone agent's own scripted
+        self-introduction/greeting) excluded. Otherwise the business's own
+        name gets mistaken for the caller's identity (e.g. an AI agent
+        greeting "This is Francis from Air Santé" being extracted as the
+        CALLER's name). Callers should build this from diarized utterances
+        filtered against identify_realtor_speaker's result, not raw full_text.
+
         Returns:
           matched_client_id: str | None  — id of existing client, or None
           extracted_name: str | None     — name found in transcript
@@ -275,15 +283,17 @@ In ONE short, natural sentence (max 25 words, no markdown), tell {agent_name} wh
             model=self.model,
             max_tokens=200,
             system=(
-                "You extract client identity from real estate call transcripts. "
+                f"You extract caller identity from {industry_domain(industry_mode)} phone call transcripts. "
+                "The excerpt you're given contains ONLY the caller's own words — "
+                "the business side has already been removed. "
                 "Reply with ONLY valid JSON — no prose, no code fences."
             ),
             messages=[{
                 "role": "user",
                 "content": (
                     f"EXISTING CLIENTS:\n{client_list}\n\n"
-                    f"TRANSCRIPT EXCERPT:\n{full_text[:1500]}\n\n"
-                    "Task: identify who the non-realtor person in this call is.\n"
+                    f"CALLER'S OWN WORDS:\n{customer_text[:1500]}\n\n"
+                    "Task: identify the caller's name and phone number, if given.\n"
                     "Return JSON:\n"
                     '{"matched_client_id": "<id from list or null>", '
                     '"extracted_name": "<full name or null>", '

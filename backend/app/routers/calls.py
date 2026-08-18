@@ -47,12 +47,21 @@ def _resolve_client(
     db,
     agent_id: str,
     coaching_svc: CoachingService,
-    full_text: str,
+    utterances: list[dict],
+    realtor_speaker: str,
     phone_hint: str | None,
     brokerage_id: str | None = None,
+    industry_mode: str | None = None,
 ) -> tuple[str | None, bool, str | None]:
     """Return (client_id, is_new_client, name) — matching existing or creating a new profile."""
     clients = db.table("clients").select("id, name, phone, email").eq("agent_id", agent_id).execute().data
+
+    # Only the CALLER's own lines — excluding the business side (a realtor,
+    # or an AI phone agent's own scripted self-introduction/greeting) — so
+    # identify_client can't mistake the business's own name for the caller's.
+    customer_text = "\n".join(
+        u["text"] for u in utterances if u.get("speaker") != realtor_speaker
+    )
 
     # 1. Phone-first match (most reliable)
     if phone_hint:
@@ -63,14 +72,14 @@ def _resolve_client(
                 # Client" forever just because an earlier call never caught
                 # their name — try to backfill it from THIS call's transcript.
                 if not name or name.strip().lower() == "unknown client":
-                    extracted = coaching_svc.identify_client(full_text, []).get("extracted_name")
+                    extracted = coaching_svc.identify_client(customer_text, [], industry_mode).get("extracted_name")
                     if extracted:
                         db.table("clients").update({"name": extracted}).eq("id", c["id"]).execute()
                         name = extracted
                 return c["id"], False, name
 
     # 2. AI name/context match
-    result = coaching_svc.identify_client(full_text, clients)
+    result = coaching_svc.identify_client(customer_text, clients, industry_mode)
     if result.get("matched_client_id") and result.get("confidence") == "high":
         # Backfill phone if we found one and the profile doesn't have it
         if phone_hint:
@@ -153,11 +162,21 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
             **({"call_date": call_start} if call_start else {}),
         }).eq("id", call_id).execute()
 
+        # Speaker roles are needed BEFORE client resolution, not after: name
+        # extraction must only ever see the caller's own lines, never the
+        # business side's (a realtor's, or an AI phone agent's own scripted
+        # self-introduction/greeting — otherwise that gets mistaken for the
+        # caller's name).
+        call_type = coaching_svc.classify_call(utterances)
+        realtor_speaker = coaching_svc.identify_realtor_speaker(utterances, industry_mode)
+
         # Resolve client if not manually provided
         resolved_name = None
         if not client_id:
             try:
-                client_id, _is_new_client, resolved_name = _resolve_client(db, agent_id, coaching_svc, full_text, phone_hint, brokerage_id)
+                client_id, _is_new_client, resolved_name = _resolve_client(
+                    db, agent_id, coaching_svc, utterances, realtor_speaker, phone_hint, brokerage_id, industry_mode,
+                )
                 if client_id:
                     db.table("calls").update({"client_id": client_id}).eq("id", call_id).execute()
             except Exception as resolve_err:
@@ -191,9 +210,6 @@ def _process_call(call_id: str, agent_id: str, audio_url: str, client_id: str | 
                 }).execute()
         except Exception as job_err:
             print(f"[calls] job detection failed (non-fatal): {job_err}")
-
-        call_type = coaching_svc.classify_call(utterances)
-        realtor_speaker = coaching_svc.identify_realtor_speaker(utterances, industry_mode)
 
         try:
             client_notes = retrieve_context(agent_id, full_text[:500])
