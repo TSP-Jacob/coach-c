@@ -197,7 +197,21 @@ export const api = {
     syncCustomers: () =>
       req<{ synced: number; total: number }>(`/api/billing/admin/sync-customers`, { method: "POST" }),
   },
+  liveCalls: {
+    list: () => req<{ calls: LiveCall[]; configured: boolean; error?: string }>(`/api/live-calls/`),
+    // No REST call for the stream itself — it's a WebSocket, built the same
+    // way the voice assistant's is (see components/VoiceAssistant.tsx):
+    // `${wsBase()}/api/live-calls/${callSid}/stream`, authenticated in-band
+    // via getAuthToken(), same as everywhere else a raw socket needs a JWT.
+  },
 };
+
+export interface LiveCall {
+  callSid: string;
+  callerFrom: string | null;
+  startedAt: string;
+  takeoverActive: boolean;
+}
 
 export interface Call {
   id: string; agent_id: string; client_id?: string;
