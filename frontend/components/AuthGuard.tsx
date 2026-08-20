@@ -1,7 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, getExtToken } from "@/lib/auth";
+import { useAuth, getExtToken, isSigningOut } from "@/lib/auth";
 
 const SKIP_AUTH = process.env.NEXT_PUBLIC_SKIP_AUTH === "true";
 
@@ -11,6 +11,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const extToken = getExtToken();
 
   useEffect(() => {
+    // A sign-out already committed to a full-page redirect to the portal.
+    // Routing to /login here would cancel that pending navigation and strand
+    // the user in the app — the "had to click Sign Out twice" bug.
+    if (isSigningOut()) return;
     if (!loading && !SKIP_AUTH && !session && !extToken) {
       router.replace("/login");
     }

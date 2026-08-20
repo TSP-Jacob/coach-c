@@ -86,12 +86,19 @@ function NavLinks({ onNav }: { onNav?: () => void }) {
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const { signOut, session, agentId, t } = useAuth();
   const router = useRouter();
 
   const handleSignOut = async () => {
-    const alreadyNavigated = await signOut();
-    if (!alreadyNavigated) router.replace("/login");
+    if (signingOut) return; // sign-out already in flight; don't restart it
+    setSigningOut(true);
+    try {
+      const alreadyNavigated = await signOut();
+      if (!alreadyNavigated) router.replace("/login");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (

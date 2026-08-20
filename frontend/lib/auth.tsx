@@ -18,6 +18,18 @@ export function getExtToken(): string | null {
   return sessionStorage.getItem("ext_token");
 }
 
+// Set for the rest of the document's life once a sign-out has committed to a
+// full-page navigation (to the portal). Assigning window.location does NOT
+// navigate synchronously — it only schedules the load, and any client-side
+// History navigation that runs before it commits will CANCEL it. Clearing auth
+// state re-renders AuthGuard into its logged-out branch, whose effect fires
+// router.replace("/login") and does exactly that. That cancellation is the
+// "first click does nothing" bug. AuthGuard reads this to stand down.
+let signingOut = false;
+export function isSigningOut(): boolean {
+  return signingOut;
+}
+
 export type Features = Record<string, boolean>;
 
 // Client-side defaults, mirrored from the backend's FEATURE_DEFAULTS. These
@@ -177,6 +189,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // session on this origin.
       const ssoToken = sessionStorage.getItem("ext_token");
 
+      // Latch this BEFORE anything async: from here on, no client-side
+      // navigation may run, or it will cancel the portal redirect below.
+      if (ssoToken) signingOut = true;
+
       // scope=local revokes only THIS session's refresh token — not every
       // session for the user. Signing out of the browser must never sign
       // the user out of the Android app (or any other device); each stays
@@ -192,23 +208,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* best effort — local clear below still runs */ }
 
-      // Clear this origin's state.
       sessionStorage.removeItem("ext_token");
-      await supabase.auth.signOut();
-      setSession(null);
-      setAgentId(null);
-      setRole(null);
 
       // The old-style SSO user's persistent session lives on the portal
       // origin, which we can only clear by handing control back there with
-      // a sign-out signal. window.location.href doesn't block, so the
-      // caller must NOT also navigate itself here — racing a client-side
-      // router.replace against this full-page navigation is exactly what
-      // made "Sign Out" look like it needed a second click to work.
+      // a sign-out signal. Navigate and stop: deliberately do NOT clear the
+      // React auth state first. Those setters only repaint a document that
+      // is already on its way out, and the re-render they trigger is what
+      // used to fire AuthGuard's router.replace("/login") and kill this
+      // navigation mid-flight. replace() also keeps the signed-out app off
+      // the back stack.
       if (ssoToken) {
-        window.location.href = `${PORTAL_URL}/login?signedout=1`;
+        window.location.replace(`${PORTAL_URL}/login?signedout=1`);
         return true;
       }
+
+      // Non-SSO: staying on this origin, so clearing state is what makes the
+      // UI reflect the sign-out. The caller routes to /login.
+      setSession(null);
+      setAgentId(null);
+      setRole(null);
       return false;
     },
     }}>
